@@ -1,0 +1,29 @@
+#!/bin/bash
+# Downloads and reviews PKGBUILDs from a user and opens them up in $EDITOR
+# fetch - downloads all packages from the user
+# review - opens up each of the package directories in $EDITOR
+# Default: fetches all packages and reviews them.
+
+fetch(){
+    pkgs=$(curl -s "https://aur.archlinux.org/rpc/?v=5&type=search&search_by=maintainer&arg=$1" | jq -r '.results[].PackageBase' | sort -u)
+    for pkg in $pkgs; do
+        printf "===> Downloading %s...\n" "$pkg"
+        curl -s https://aur.archlinux.org/cgit/aur.git/snapshot/$pkg.tar.gz | tar xzm
+    done
+}
+
+review(){
+    for pkgbuild in $(ls ./*/PKGBUILD | sort); do
+        printf "Review %s?" "${pkgbuild%/*}"
+        read
+        pushd "${pkgbuild%/*}" > /dev/null
+        "$EDITOR" .
+        popd > /dev/null
+    done
+}
+
+case "$@" in
+    fetch) shift; fetch "$@" ;;
+    review) shift; review "$@" ;;
+    *) shift; fetch "$@"; review "$@" ;;
+esac
