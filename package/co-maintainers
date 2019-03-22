@@ -1,0 +1,61 @@
+#!/bin/bash
+set -o errexit
+shopt -s extglob
+
+help(){
+    cat << EOF 
+Usage:
+  $PROGRAM
+
+Flags:
+    -m [maintainer]     find packages from maintainer
+    -q                  local packages
+    -f [repository]     filter on repository, Default: core extra multilib community
+    -l [limit]          co-maintainer limit to filter on default: 1
+    -h                  help messages
+
+Example:
+    Find packages from a maintainer with 2 maintainers
+    $ co-maintainers -m Foxboron -l 2
+
+    Find packages installed on the system from the core repository with 1 maintainer
+    $ co-maintainers -q -f core -l 1
+EOF
+}
+
+
+limit_maintainers=1
+filter=()
+
+while true; do
+    case "$1" in
+        -m) shift; maintainer_query="maintainer=$1" ;;
+        -q) local_packages=1;;
+        -l) shift; limit_maintainers=$1;;
+        -f) shift; filter+=("$1");;
+        -h) help;;
+        "") break;;
+    esac
+    shift
+done
+
+
+find_packages(){
+    test ${#filter} -eq 0 && filter=(core extra community multilib)
+    if ((local_packages)); then
+        expac -S "%r %a %n" $(expac %n) | grep -P "^($(echo "${filter[*]}" | tr ' ' '|'))"
+    else
+        curl -s "https://www.archlinux.org/packages/search/json/?${maintainer_query}" | jq -r '.results[] | "\(.repo) \(.arch) \(.pkgname)"' | sort | uniq
+    fi
+}
+
+packages=()
+
+while read -r pkg; do
+    packages+=("$pkg")
+done <<< "$(find_packages)"
+
+while read -r repo arch pkg; do
+    curl -s "https://www.archlinux.org/packages/$repo/$arch/$pkg/json/" | \
+        jq -r --argjson LIMIT $limit_maintainers 'select(.maintainers | length == $LIMIT) | "\(.pkgbase)"'
+done <<< "$(IFS=$'\n'; echo "${packages[*]}")"
