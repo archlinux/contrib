@@ -1,0 +1,39 @@
+#!/bin/bash
+# Script to offload building of a local PKGBUILD onto a remote server.
+# After building, the resulting package is copied back to the local machine.
+# You have to have keyless entry to the build server and it has to be running Arch Linux
+# with installed devtools.
+#
+# First argument is build tool to use (e.g. extra-x86_64-build).
+# If not provided, defaults to extra-x86_64-build.
+
+BUILD_TOOL=${1-extra-x86_64-build}
+
+# Which server to offload to.
+SERVER=dragon.archlinux.org
+
+# Where to put the source files.
+BUILD_DIR=offloaded
+
+source /usr/share/makepkg/source.sh
+source PKGBUILD
+
+# Copy sources to offload server.
+ssh $SERVER mkdir -pv offloaded/$pkgname
+rsync -v PKGBUILD $SERVER:$BUILD_DIR/$pkgname/PKGBUILD
+[[ -n "$install" ]] && rsync $install $SERVER:$BUILD_DIR/$pkgname/$install
+for s in ${source[@]}; do
+    if [[ $(get_protocol $s) == "local" ]]; then
+        rsync -v $s $SERVER:$BUILD_DIR/$pkgname/$s
+    fi
+done
+ssh -t $SERVER "cd $BUILD_DIR/$pkgname/ && makepkg --verifysource -f"
+
+# Actually build the package
+ssh -t $SERVER "cd $BUILD_DIR/$pkgname/ && $BUILD_TOOL"
+
+# Copy back the built packages
+resulting_packages=$(ssh $SERVER "cd $BUILD_DIR/$pkgname/ && makepkg --packagelist")
+for package in ${resulting_packages[@]}; do
+    rsync -v $SERVER:$package .
+done
