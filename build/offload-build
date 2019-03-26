@@ -30,15 +30,15 @@ source PKGBUILD
 
 # Copy sources to offload server.
 ssh $SERVER mkdir -pv offloaded/$pkgname
-rsync -v PKGBUILD $SERVER:$BUILD_DIR/$pkgname/PKGBUILD
-[[ -n "$install" ]] && rsync "$install" "$SERVER:$BUILD_DIR/$pkgname/$install"
+rsync -vh PKGBUILD $SERVER:$BUILD_DIR/$pkgname/PKGBUILD
+[[ -n "$install" ]] && rsync -vh "$install" "$SERVER:$BUILD_DIR/$pkgname/$install"
 sources_to_sync=()
 for s in "${source[@]}"; do
     if [[ $(get_protocol $s) == "local" ]]; then
         sources_to_sync+=("$s")
     fi
 done
-[[ ${#sources_to_sync[@]} -ne 0 ]] && rsync -v ${sources_to_sync[*]} "$SERVER:$BUILD_DIR/$pkgname/"
+[[ ${#sources_to_sync[@]} -ne 0 ]] && rsync -vh ${sources_to_sync[*]} "$SERVER:$BUILD_DIR/$pkgname/"
 ssh -t $SERVER "cd $BUILD_DIR/$pkgname/ && makepkg --verifysource -f"
 
 # Actually build the package
@@ -50,4 +50,4 @@ files_to_copy_back=""
 for package in ${resulting_packages}; do
     files_to_copy_back="$files_to_copy_back $SERVER:$package"
 done
-[[ -n ${files_to_copy_back} ]] && rsync -v ${files_to_copy_back[*]} .
+[[ -n ${files_to_copy_back} ]] && rsync -vh ${files_to_copy_back[*]} .
