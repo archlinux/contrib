@@ -15,6 +15,11 @@ SERVER=dragon.archlinux.org
 # Where to put the source files.
 BUILD_DIR=offloaded
 
+if [[ ! -f PKGBUILD ]]; then
+    echo "No PKGBUILD found in current dir, exiting"
+    exit 1
+fi
+
 source /usr/share/makepkg/source.sh
 source PKGBUILD
 
