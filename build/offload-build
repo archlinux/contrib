@@ -7,6 +7,8 @@
 # First argument is build tool to use (e.g. extra-x86_64-build).
 # If not provided, defaults to extra-x86_64-build.
 
+set -e pipefail
+
 BUILD_TOOL=${1-extra-x86_64-build}
 
 # Which server to offload to.
