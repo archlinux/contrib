@@ -71,7 +71,7 @@ mapfile -t files < <(
             cd "$temp" &&
             {
                 bsdtar --strip-components 1 -xvf - &&
-                '"${repo}${arch:+-$arch}-build"' &&
+                script -qfc '"${repo}${arch:+-$arch}-build"' /dev/null &&
                 printf "%s\n" "" "-> build complete" &&
                 printf "\t%s\n" "$temp"/*
             } >&2 &&
