@@ -99,6 +99,7 @@ mapfile -t files < <(
 
 # copy files back to PKGDEST on initiating machine
 # use makepkg itself to get PKGDEST
-PKGDEST=$(dirname $(makepkg --packagelist) | xargs | cut -d" " -f1)
+readarray -t PKGNAMES <<<"$(makepkg --packagelist)"
+PKGDEST=$(dirname -z "${PKGNAMES[0]}" | cut -d $'\0' -f1)
 
 (( ${#files[@]} )) && printf '%s\n' '' '-> copying files...' && scp "${files[@]/#/$server:}" "${PKGDEST:-.}"
