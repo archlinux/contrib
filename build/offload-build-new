@@ -97,4 +97,8 @@ mapfile -t files < <(
             makepkg --packagelist
 ')
 
-(( ${#files[@]} )) && printf '%s\n' '' '-> copying files...' && scp "${files[@]/#/$server:}" .
+# copy files back to PKGDEST on initiating machine
+MAKEPKG_CONF=${/etc/makepkg.conf:-$XDG_CONFIG_HOME/pacman/makepkg.conf}
+source ${MAKEPKG_CONF:-$HOME/.makepkg.conf}
+
+(( ${#files[@]} )) && printf '%s\n' '' '-> copying files...' && scp "${files[@]/#/$server:}" ${PKGDEST:-.}
