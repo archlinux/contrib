@@ -98,7 +98,18 @@ mapfile -t files < <(
 ')
 
 # copy files back to PKGDEST on initiating machine
-MAKEPKG_CONF=${/etc/makepkg.conf:-$XDG_CONFIG_HOME/pacman/makepkg.conf}
-source ${MAKEPKG_CONF:-$HOME/.makepkg.conf}
+USER_MAKEPKG_CONF=$HOME/.makepkg.conf
+CONFD_MAKEPKG_CONF=${XDG_CONFIG_HOME:-$HOME/.config}/pacman/makepkg.conf
+SYS_MAKEPKG_CONF='/etc/makepkg.conf'
+if [ ! -f "${USER_MAKEPKG_CONF}" ]; then
+  if [ ! -f "${CONFD_MAKEPKG_CONF}" ]; then
+    MAKEPKG_CONF="${SYS_MAKEPKG_CONF}"
+  else
+    MAKEPKG_CONF="${CONFD_MAKEPKG_CONF}"
+  fi
+else
+  MAKEPKG_CONF="${USER_MAKEPKG_CONF}"
+fi
+source "${MAKEPKG_CONF}"
 
 (( ${#files[@]} )) && printf '%s\n' '' '-> copying files...' && scp "${files[@]/#/$server:}" ${PKGDEST:-.}
