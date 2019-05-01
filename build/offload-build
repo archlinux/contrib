@@ -1,53 +1,100 @@
 #!/bin/bash
-# Script to offload building of a local PKGBUILD onto a remote server.
-# After building, the resulting package is copied back to the local machine.
 #
-# Requirements:
-# - You have to have keyless entry to the build server and it has to be running Arch Linux
-#   with installed devtools.
-# - rsync installed locally
+#   offload-build - build a PKGBUILD on a remote server using makechrootpkg.
 #
-# First argument is build tool to use (e.g. extra-x86_64-build).
-# If not provided, defaults to extra-x86_64-build.
+#   Copyright (c) 2019 by Eli Schwartz <eschwartz@archlinux.org>
+#
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
 
-set -eo pipefail
 
-BUILD_TOOL=${1-extra-x86_64-build}
+# global defaults suitable for use by Arch staff
+repo=extra
+arch=x86_64
+server=dragon.archlinux.org
 
-# Which server to offload to.
-SERVER=dragon.archlinux.org
+die() { printf "error: $1\n" "${@:2}"; exit 1; }
 
-# Where to put the source files.
-BUILD_DIR=offloaded
+usage() {
+    cat <<- _EOF_
+		Usage: ${BASH_SOURCE[0]##*/} [--repo REPO] [--arch ARCHITECTURE] [--server SERVER]
 
-if [[ ! -f PKGBUILD ]]; then
-    echo "No PKGBUILD found in current dir, exiting"
-    exit 1
+		Build a PKGBUILD on a remote server using makechrootpkg. Requires a remote user
+		that can run archbuild without password auth.
+
+		OPTIONS
+		    -r, --repo      Build against a specific repository (current: $repo)
+		    -a, --arch      Build against a specific architecture (current: $arch)
+		    -s, --server    Offload to a specific build server (current: $server)
+		    -h, --help      Show this help text
+_EOF_
+}
+
+# option checking
+while (( $# )); do
+    case $1 in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -r|--repo)
+            repo=$2
+            shift 2
+            ;;
+        -a|--arch)
+            arch=$2
+            shift 2
+            ;;
+        -s|--server)
+            server=$2
+            shift 2
+            ;;
+        *)
+            die "invalid argument: %s" "$1"
+            ;;
+    esac
+done
+
+# multilib must be handled specially
+if [[ $repo = multilib* ]]; then
+    arch=
 fi
 
-source /usr/share/makepkg/source.sh
-source PKGBUILD
+trap 'rm -rf $SRCPKGDEST' EXIT
 
-# Copy sources to offload server.
-ssh $SERVER mkdir -pv offloaded/$pkgname
-rsync -vh PKGBUILD $SERVER:$BUILD_DIR/$pkgname/PKGBUILD
-[[ -n "$install" ]] && rsync -vh "$install" "$SERVER:$BUILD_DIR/$pkgname/$install"
-sources_to_sync=()
-for s in "${source[@]}"; do
-    if [[ $(get_protocol $s) == "local" ]]; then
-        sources_to_sync+=("$s")
-    fi
-done
-[[ ${#sources_to_sync[@]} -ne 0 ]] && rsync -vh ${sources_to_sync[*]} "$SERVER:$BUILD_DIR/$pkgname/"
-ssh -t $SERVER "cd $BUILD_DIR/$pkgname/ && makepkg --verifysource -f"
+# Use a source-only tarball as an intermediate to transfer files. This
+# guarantees the checksums are okay, and guarantees that all needed files are
+# transferred, including local sources, install scripts, and changelogs.
+export SRCPKGDEST=$(mktemp -d)
+makepkg --source || die "unable to make source package"
 
-# Actually build the package
-ssh -t $SERVER "cd $BUILD_DIR/$pkgname/ && $BUILD_TOOL"
+mapfile -t files < <(
+    # This is sort of bash golfing but it allows running a mildly complex
+    # command over ssh with a single connection.
+    cat "$SRCPKGDEST"/*.src.tar.gz |
+        ssh $server '
+            temp="${XDG_CACHE_HOME:-$HOME/.cache}/offload-build" &&
+            mkdir -p "$temp" &&
+            temp=$(mktemp -d -p "$temp") &&
+            cd "$temp" &&
+            {
+                bsdtar --strip-components 1 -xvf - &&
+                script -qefc '"${repo}${arch:+-$arch}-build"' /dev/null &&
+                printf "%s\n" "" "-> build complete" &&
+                printf "\t%s\n" "$temp"/*
+            } >&2 &&
+            makepkg --packagelist
+')
 
-# Copy back the built packages
-resulting_packages=$(ssh $SERVER "cd $BUILD_DIR/$pkgname/ && makepkg --packagelist")
-files_to_copy_back=""
-for package in ${resulting_packages}; do
-    files_to_copy_back="$files_to_copy_back $SERVER:$package"
-done
-[[ -n ${files_to_copy_back} ]] && rsync -vh ${files_to_copy_back[*]} .
+(( ${#files[@]} )) && printf '%s\n' '' '-> copying files...' && scp "${files[@]/#/$server:}" .
