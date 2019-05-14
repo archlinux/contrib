@@ -1,0 +1,315 @@
+#!/bin/bash
+
+# Copyright © Sébastien Luttringer
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+
+# Check running systemd services for binary update
+# Convenient way to restart updated systemd service after upgrade
+
+# bash options
+shopt -s xpg_echo
+
+# disable grep options to avoid non default behaviour
+unset GREP_OPTIONS
+
+# systemd cgroup path
+SYSTEMD_CGROUP_BASE_PATH='/sys/fs/cgroup/systemd'
+
+# colors
+if [[ -t 1 ]]; then
+    C_BOLD='\e[1m'
+    C_BLUE='\e[34m'
+    C_RED='\e[31m'
+    C_WHITE='\e[37m'
+    C_RESET='\e[m'
+fi
+
+# default options
+AUTOCONFIRM=0       # autoconfirmation
+DBUS=1              # relauch when dbus
+FAILED=1            # display failed service at the end
+PACDIFF=1           # run pacdiff
+RELOAD=1            # reload systemd
+RESTART=1           # restart services
+SERIALIZE=0         # run in parallel
+STATUS=1            # display status after systemctl
+USER_SLICE=0        # act on users services
+
+# print $* as an arrow line
+arrow() {
+    printf "${C_BOLD}${C_BLUE}:: ${C_WHITE}%s${C_RESET}\n" "$*"
+}
+
+# print $* as an error message
+error() {
+    printf "${C_BOLD}${C_RED}Error:: ${C_WHITE}%s${C_RESET}\n" "$*" >&2
+}
+
+# usage : in_array( $needle, $haystack )
+# return : 0 - found
+#          1 - not found
+in_array() {
+    local needle=$1; shift
+    local item
+    for item in "$@"; do
+       [[ $item = $needle ]] && return 0 # Found
+    done
+    return 1 # Not Found
+}
+
+# ask for confirmation
+# return 0 when confirmed, otherwise 1
+confirm() {
+    (( $AUTOCONFIRM == 1 )) && return 0
+    local -i try
+    local ans
+    for try in 5 4 3 2 1; do
+        printf '%s [Yes|No] ' "$1"
+        read -r ans || return 1
+        case $ans in
+            y|Y|yes|Yes) return 0;;
+            n|N|no|No) return 1;;
+        esac
+    done
+    error "Too much invalid answer. Not confirmed."
+    return 1
+}
+
+# get running systemd services
+get_services() {
+    systemctl --no-legend --full --type service --state running|cut -f1 -d' '
+}
+
+# get systemd services with updated mapped files
+get_broken_maps() {
+    local service path pidfile unit_path maps_path pids deleted
+    local -a pids=()
+    local -i pid=0
+    for service in $(get_services); do
+        unit_path="$(systemctl --property ControlGroup --value show "$service")"
+        # hack to fix to systemd internal cgroup escaping on slice
+        unit_path="$(printf "$unit_path"|sed 's,\\x5c,\\,')"
+        # get the right pidfile name
+        pidfile=''
+        for path in "$SYSTEMD_CGROUP_BASE_PATH$unit_path/cgroup.procs" \
+            "$SYSTEMD_CGROUP_BASE_PATH$unit_path/tasks"; do
+            [[ -r "$path" ]] && pidfile="$path" && continue
+        done
+        [[ -z "$pidfile" ]] && error "Unable to find pid file for $service." && continue
+        # skip non system units
+        (( $USER_SLICE == 0 )) && [[ "$unit_path" =~ /user\.slice/ ]] && continue
+        # parse pidfile
+        pids=( $(< "$pidfile") )
+        if (( "${#pids[*]}" == 0 )); then
+            error "Unable to parse pid file for $service."
+            continue
+        fi
+        for pid in "${pids[@]}"; do
+            maps_path="/proc/$pid/maps"
+            [[ -r "$maps_path" ]] || {
+                error "Unable to read maps file of $service for pid $pid."
+                continue
+            }
+            # only file mapped as executable
+            deleted="$(grep -F '(deleted)' "$maps_path"|sed -nr 's|^\S+ ..x. \S+ \S+ \S+ \s+||p')"
+            if [[ $deleted ]]; then
+                printf "%s\n" $service
+                break
+            fi
+        done
+    done
+}
+
+# get dbus clients on the system bus
+get_dbus_names() {
+    dbus-send --system --dest=org.freedesktop.DBus --type=method_call --print-reply \
+    /org/freedesktop/DBus org.freedesktop.DBus.ListNames|sed -rn 's/\s*string "(.*)"/\1/p'
+}
+
+# get systemd services not registered on dbus system bus
+get_missing_dbus() {
+    local service busname
+    local -a registered=($(get_dbus_names))
+    for service in $(get_services); do
+        # get the service registered bus name
+        busname="$(systemctl --property BusName --value show "$service")"
+        if [[ "$busname" ]] && ! in_array "$busname" "${registered[@]}"; then
+            echo $service
+        fi
+    done
+}
+
+# display restart intruction from service name
+display_restart() {
+    local service
+    echo '-------8<-------------------------------8<---------'
+    for service; do
+        echo "systemctl restart '$service'"
+    done
+    echo '-------8<-------------------------------8<---------'
+}
+
+# restart systemd services given in arguments
+restart_services() {
+    local service
+    local -i last_registered_pids_count
+    local -A registered_pids=()
+    local -a running_pids=()
+
+    # do the job, restart updated services
+    for service; do
+        echo "systemctl restart $service"
+        systemctl restart "$service" &
+        if (( $SERIALIZE )); then
+            wait
+            # display status directly when serialize and not quiet
+            (( $STATUS )) && systemctl --no-pager --lines=0 status "$service"
+        else
+            # register pids
+            registered_pids[$!]="$service"
+        fi
+    done
+
+    # display status as soon as available when not serialized
+    while (( ${#registered_pids[*]} )); do
+        # wait for process at least one process to finish
+        wait -n
+
+        running_pids=( $(jobs -p) )
+
+        # count registered pid for loop protection
+        last_registered_pids_count=${#registered_pids[*]}
+
+        for pid in "${!registered_pids[@]}"; do
+            in_array "$pid" "${running_pids[@]}" && continue
+            # show units status
+            (( $STATUS )) && systemctl --no-pager --lines=0 status "${registered_pids[$pid]}"
+            unset registered_pids[$pid]
+            break
+        done
+
+        # ensure we are not at 1st infinite loop
+        # if we didn't remove a process something wrong happen
+        if (( $last_registered_pids_count == ${#registered_pids[*]} )); then
+            error "Unable to wait processes to finish"
+            error "Registered PIDs: ${registered_pids[*]}"
+            error "Running PIDs: ${running_pids[*]}"
+            break
+        fi
+    done
+}
+
+# reload or reexectute systemd
+reload_systemd() {
+  if grep -qF '(deleted)' /proc/1/maps; then
+    arrow 'Restart systemd'
+    systemctl --system daemon-reexec
+  else
+    arrow 'Reload systemd'
+    systemctl --system daemon-reload
+  fi
+}
+
+# display application usage and exit 2
+usage() {
+    echo "usage ${0##*/} [options]"
+    echo "description: check for updated files in a service"
+    echo 'options:'
+    echo '  -h: this help' >&2
+    echo "  -c: auto confirmation" >&2
+    echo "  -l/-L: call (or not) systemd daemon-(reload|reexec) (default: $RELOAD)" >&2
+    echo "  -f/-F: display (or not) failed services before quit (default: $FAILED)" >&2
+    echo "  -p/-P: call (or not) pacdiff before act (default: $PACDIFF)" >&2
+    echo "  -r/-R: restart (or not) services with updated files (default: $RESTART)" >&2
+    echo "  -s/-S: display (or not) status of restarted service (default: $STATUS)" >&2
+    echo "  -u/-U: act (or not) on services in users slice (default: $USER_SLICE)" >&2
+    echo "  -z/-Z: serialize (or not) action (default: $SERIALIZE)" >&2
+    exit 2
+}
+
+# parse command line arguments
+# set options as global vars
+argparse() {
+    local opt
+    while getopts 'ahFfLlPpRrSsUuZz' opt; do
+        case $opt in
+            a) AUTOCONFIRM=0;;
+            F) FAILED=0;;           f) FAILED=1;;
+            L) RELOAD=0;;           l) RELOAD=1;;
+            P) PACDIFF=0;;          p) PACDIFF=1;;
+            R) RESTART=0;;          r) RESTART=1;;
+            S) STATUS=0;;           s) STATUS=1;;
+            U) USER_SLICE=0;;       u) USER_SLICE=1;;
+            Z) SERIALIZE=0;;        z) SERIALIZE=1;;
+            *) usage;;
+        esac
+    done
+    shift $((OPTIND - 1));
+    (( $# > 0 )) && usage
+}
+
+# emulated program entry point
+main() {
+    # avoid to be sighup'ed by interactive shell
+    trap '' SIGHUP
+
+    # from now, we need to be root
+    (( $UID != 0 )) && error 'You need to be root' && exit 1
+
+    # parse command line options
+    argparse "$@"
+
+    # call pacdiff to ensure config files are updated before restart
+    if (( $PACDIFF )); then
+        arrow 'Run pacdiff'
+        pacdiff
+    fi
+
+    # ensure systemd has been reloaded or reexectued
+    (( $RELOAD )) && reload_systemd
+
+    arrow 'Services with broken maps files'
+    local -a broken_services=($(get_broken_maps))
+    echo "Found: ${#broken_services[@]}"
+    if (( ${#broken_services[@]} )); then
+        display_restart "${broken_services[@]}"
+        if confirm 'Execute?'; then
+            arrow 'Restart broken services'
+            restart_services "${broken_services[@]}"
+        fi
+    fi
+
+    arrow 'Services missing on the system bus'
+    local -a missing_services=($(get_missing_dbus))
+    echo "Found: ${#missing_services[@]}"
+    if (( ${#missing_services[@]} )); then
+        display_restart "${missing_services[@]}"
+        if confirm 'Execute?'; then
+            arrow 'Restart missing services'
+            restart_services "${missing_services[@]}"
+        fi
+    fi
+
+    # list only failed systemd units
+    if (( $FAILED )); then
+        arrow "List failed units"
+        systemctl --failed --all --no-pager --no-legend --full list-units
+    fi
+}
+
+main "$@"
+
+exit 0
