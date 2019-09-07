@@ -5,7 +5,7 @@ SCRIPTS = \
 	admin/checkservices \
 	aur/review	\
 	package/co-maintainers \
-	security/security_tracker_check.py \
+	security/security-tracker-check \
 
 
 .PHONY: install
