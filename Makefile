@@ -1,5 +1,7 @@
 PREFIX = /usr/local
 SHAREDIR = $(PREFIX)/share/archlinux
+REPO = contrib
+TAG = $(shell git describe --abbrev=0 --tags)
 
 SCRIPTS = \
 	admin/checkservices \
@@ -21,3 +23,11 @@ uninstall:
 		rm -rf $(DESTDIR)$(SHAREDIR)/contrib/$${script%/*}; \
 	done;
 	rmdir $(DESTDIR)$(SHAREDIR)
+
+.PHONY: tag
+tag:
+	git tag $(shell date +%Y%m%d) || true
+
+.PHONY: release
+release: tag
+	git archive --prefix=${REPO}-${TAG}/ -o ${REPO}-${TAG}.tar.gz ${TAG};
