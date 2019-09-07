@@ -1,4 +1,7 @@
 #!/usr/bin/python
+
+# SPDX-License-Identifier: GPL-2.0
+
 # Takes an email in STDIN, find all mentioned CVEs and check the security tracker if they are tracked or not.
 # Requires python-requests
 
