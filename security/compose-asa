@@ -1,0 +1,19 @@
+#!/usr/bin/bash
+# Author: Morten Linderud <foxboron@archlinux.org>
+# SPDX-License-Identifier: GPL-2.0
+
+# Usage ./compose-asa
+# Example: export COMPOSE_ASA_EMAIL="neomutt -e 'source /home/fox/.config/mutt/account.d/archlinux' -e 'set signature=' -E -H"
+
+set -eou pipefail
+
+export COMPOSE_ASA_EMAIL=${COMPOSE_ASA_EMAIL:-mutt}
+
+for asa in $(curl -s "https://security.archlinux.org/todo/json" | jq -r '.advisories.scheduled | reverse | .[].name'); do
+	read -r -e -p "Send $asa? [y/N]" PR
+	[[ $PR == "n" || $PR == "N" || $PR == "" ]]	 && continue
+	TMPFILE=$(mktemp)
+	echo "To: arch-security@archlinux.org" > "$TMPFILE"
+	curl -s "https://security.archlinux.org/$asa/generate/raw" >> "$TMPFILE"
+	$COMPOSE_ASA_EMAIL "$TMPFILE"
+done
