@@ -27,7 +27,11 @@ uninstall:
 .PHONY: tag
 tag:
 	git tag $(shell date +%Y%m%d) || true
+	git push --tags
 
 .PHONY: release
-release: tag
-	git archive --prefix=${REPO}-${TAG}/ -o ${REPO}-${TAG}.tar.gz ${TAG};
+release:
+	mkdir -p releases
+	git archive --prefix=${REPO}-${TAG}/ -o releases/${REPO}-${TAG}.tar.gz ${TAG};
+	gpg --detach-sign -o releases/${REPO}-${TAG}.tar.gz.sig releases/${REPO}-${TAG}.tar.gz
+	hub release create -m "Release: ${TAG}" -a releases/${REPO}-${TAG}.tar.gz.sig -a releases/${REPO}-${TAG}.tar.gz ${TAG}
