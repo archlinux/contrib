@@ -26,7 +26,7 @@ uninstall:
 
 .PHONY: tag
 tag:
-	git tag $(shell date +%Y%m%d) || true
+	git describe --exact-match >/dev/null 2>&1 || git tag -s $(shell date +%Y%m%d)
 	git push --tags
 
 .PHONY: release
