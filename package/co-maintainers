@@ -48,7 +48,9 @@ done
 find_packages(){
     test ${#filter} -eq 0 && filter=(core extra community multilib)
     if ((local_packages)); then
-        expac -S "%r %a %n" $(expac %n) | grep -P "^($(echo "${filter[*]}" | tr ' ' '|'))"
+        LANG=C pacman -Si $(pacman -Qq) | \
+            awk '/^Repository/ { repo=$3 } /^Name/ { name=$3 } /^Architecture/ { arch=$3 } /^$/ { print repo " " arch " " name }' | \
+            grep -P "^($(echo "${filter[*]}" | tr ' ' '|'))"
     else
         curl -s "https://www.archlinux.org/packages/search/json/?${maintainer_query}" | jq -r '.results[] | "\(.repo) \(.arch) \(.pkgname)"' | sort | uniq
     fi
@@ -61,10 +63,10 @@ while read -r pkg; do
 done <<< "$(find_packages)"
 
 while read -r repo arch pkg; do
-	format='select(.maintainers | length == $LIMIT) | "\(.pkgbase)"'
-	if ((see_maintainers)); then
-		format='select(.maintainers | length == $LIMIT) | "\(.pkgbase)", (.maintainers | join(" "))'
-	fi
+    format='select(.maintainers | length == $LIMIT) | "\(.pkgbase)"'
+    if ((see_maintainers)); then
+        format+=', (.maintainers | join(" "))'
+    fi
     curl -s "https://www.archlinux.org/packages/$repo/$arch/$pkg/json/" | \
         jq -r --argjson LIMIT $limit_maintainers "$format"
 done <<< "$(IFS=$'\n'; echo "${packages[*]}")"
