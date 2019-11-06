@@ -8,6 +8,7 @@ SCRIPTS = \
 	aur/review	\
 	package/co-maintainers \
 	security/security-tracker-check \
+	package/cleanup-list.py \
 
 
 .PHONY: install
