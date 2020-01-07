@@ -1,0 +1,45 @@
+#!/usr/bin/python
+
+# SPDX-License-Identifier: GPL-2.0
+
+import argparse
+import sys
+
+import requests
+
+CMD = './db-move {} {} {}'
+
+
+def main(url):
+    pkgs = set()
+
+    try:
+        r = requests.get(url)
+    except requests.exceptions.RequestException as e:
+        print(e)
+        sys.exit(1)
+
+    for pkg in r.json()['packages']:
+        pkgbase = pkg['pkgbase']
+        sourcerepo = 'staging'
+        repo = 'testing'
+
+        if pkg['repo'] == 'community':
+            sourcerepo = 'community-staging'
+            repo = 'community-testing'
+        elif pkg['repo'] == 'multilib':
+            sourcerepo = 'community-staging'
+            repo = 'multilib-testing'
+
+        pkgs.add(CMD.format(sourcerepo, repo, pkgbase))
+
+    print('\n'.join(sorted(pkgs)))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='staging dbscripts generator')
+    parser.add_argument('--url', type=str, help='todo list url json endpoint', required=True)
+
+    args = parser.parse_args()
+
+    main(args.url)

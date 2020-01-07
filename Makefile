@@ -7,6 +7,7 @@ SCRIPTS = \
 	admin/checkservices \
 	aur/review	\
 	package/co-maintainers \
+	package/staging2testing \
 	security/security-tracker-check \
 	package/cleanup-list.py \
 
