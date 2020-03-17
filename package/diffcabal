@@ -1,0 +1,9 @@
+#!/bin/bash
+hkgname=$1
+ver1=$2
+ver2=$3
+
+test -f /tmp/$hkgname.cabal.$ver1 || wget -O /tmp/$hkgname.cabal.$ver1 https://hackage.haskell.org/package/$hkgname-$ver1/revision/0.cabal
+test -f /tmp/$hkgname.cabal.$ver2 || wget -O /tmp/$hkgname.cabal.$ver2 https://hackage.haskell.org/package/$hkgname-$ver2/revision/0.cabal
+
+git diff --ignore-space-change --ignore-blank-lines --text /tmp/$hkgname.cabal.$ver1 /tmp/$hkgname.cabal.$ver2
