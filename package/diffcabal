@@ -1,7 +1,15 @@
 #!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0
+
 hkgname=$1
 ver1=$2
 ver2=$3
+
+if [[ -z "$hkgname" || -z "$ver1" || -z "$ver2" ]]; then
+  echo "Usage: $0 <CABAL_LIBRARY_NAME> <OLD_VERSION> <NEW_VERSION>"
+  exit 1
+fi
 
 test -f /tmp/$hkgname.cabal.$ver1 || wget -O /tmp/$hkgname.cabal.$ver1 https://hackage.haskell.org/package/$hkgname-$ver1/revision/0.cabal
 test -f /tmp/$hkgname.cabal.$ver2 || wget -O /tmp/$hkgname.cabal.$ver2 https://hackage.haskell.org/package/$hkgname-$ver2/revision/0.cabal
