@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0
+
+if (( $# == 0 )); then
+  echo "error: No arguments passed."
+  echo "pkgbase is a required argument"
+  exit 1
+fi
+
+PKGBASE=$1
+
+if [[ ! -d "$PKGBASE" ]]; then
+  echo "error: directory $1 does not exists"
+  exit 1
+fi
+
+TMPDIR=$(mktemp -d)
+
+function cleanup {
+  rm -rf "$TMPDIR"
+}
+
+trap cleanup EXIT
+
+
+git clone "ssh://aur@aur.archlinux.org/$PKGBASE.git" $TMPDIR
+cp $PKGBASE/trunk/* $TMPDIR
+
+pushd $TMPDIR
+makepkg --printsrcinfo > .SRCINFO
+git add .SRCINFO
+git add *
+
+git commit -m 'import from community'
+git push
+
+popd
