@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0
+
+# Bugtracker helper utility from Scimmia
+# https://gist.github.com/Scimmia22/0fcca58fe0f7c2b5eb906fafc1f32a62
+# Improved by Eli Schwartz:
+# https://github.com/eli-schwartz/dotfiles/blob/master/bin/pkg-list-linked-libraries
+
+source /usr/share/makepkg/util/message.sh
+colorize
+
+usage() {
+    cat <<- _EOF_
+		Usage: pkg-list-linked-libraries [-s] PACKAGE [LIBNAME|SYMBOL]
+
+		Check a package to see what libraries or symbols it links against.
+		Alternatively check against a specific library.
+
+		If PACKAGE is not an existing file, pacman will resolve it
+		as a package name and attempt to download it to the cache.
+		This respects repo/pkgname syntax.
+
+		OPTIONS
+		    -s, --symbols   Show symbols instead of libraries
+		    -h, --help      Show this help text
+_EOF_
+}
+
+checklibs() {
+    msg "checking linked libraries for ${pkgfile##*/} ..."
+    while read -rd '' file; do
+        liblist="$(objdump -p "$file" 2> /dev/null | grep -E "NEEDED\s+$1")"
+        [[ -n "$liblist" ]] && printf "%s\n%s\n" "${file#$workdir}" "$liblist" && found=1
+    done
+    [[ $found ]]
+}
+
+checksyms() {
+    msg "checking linked symbols for ${pkgfile##*/} ..."
+    while read -rd '' file; do
+        liblist="$(nm --with-symbol-versions -D "$file" 2>/dev/null | awk 'NF>1 && $NF ~ /'"$1"'/{printf "\t%s\n",$NF}')"
+        [[ -n "$liblist" ]] && printf "%s\n%s\n" "${file#$workdir}" "$liblist" && found=1
+    done
+    [[ $found ]]
+}
+
+die() {
+    error "$@"
+    exit 1
+}
+
+clean_up() {
+    if [[ -d "$workdir" ]]; then
+        rm -rf "$workdir"
+    fi
+}
+trap 'clean_up' EXIT
+
+func=checklibs
+
+case $1 in
+    -s|--symbols)
+        func=checksyms
+        shift
+        ;;
+    -h|--help)
+        usage
+        exit
+        ;;
+esac
+
+if [[ -f "$1" ]]; then
+    pkgfile="$1"
+else
+    pkgfile_remote="$(pacman -Sddp "$1" 2>/dev/null)" || die "package name not in repos"
+    pkgfile="${pkgfile_remote#file://}"
+    if [[ ! -f "$pkgfile" ]]; then
+        msg "Downloading package '%s' into pacman's cache" "$1"
+        sudo pacman -Swdd --logfile /dev/null "$1" || exit 1
+        pkgfile_remote="$(pacman -Sddp "$1" 2>/dev/null)"
+        pkgfile="${pkgfile_remote#file://}"
+    fi
+fi
+
+workdir="$(mktemp -d)"
+bsdtar xf "$pkgfile" -C "$workdir"
+find "$workdir" -type f -print0 | sort -z | $func "$2"
+
+(( $? == 0 )) && exit 0
+
+if [[ -n $2 ]]; then
+    error "No file in %s is linked to %s" "${pkgfile##*/}" "$2"
+else
+    error "Uhhh... nothing in %s links to anything whatsoever..." "${pkgfile##*/}"
+fi
+exit 1
