@@ -1,0 +1,229 @@
+#!/usr/bin/env python
+
+import os
+import csv
+from io import StringIO
+from sh import pacman, expac
+import requests
+from argparse import ArgumentParser
+
+# Preset: "arch pkgname": "hackage package name"
+PRESET_PACKAGES = {
+    "agda": "Agda",
+    "alex": "alex",
+    "c2hs": "c2hs",
+    "cabal-install": "cabal-install",
+    "cgrep": "cgrep",
+    "cryptol": "cryptol",
+    "darcs": "darcs",
+    "dhall": "dhall",
+    "dhall-bash": "dhall-bash",
+    "dhall-json": "dhall-json",
+    "git-annex": "git-annex",
+    "git-repair": "git-repair",
+    "gtk2hs-buildtools": "gtk2hs-buildtools",
+    "happy": "happy",
+    "hledger": "hledger",
+    "hledger-api": "hledger-api",
+    "hledger-ui": "hledger-ui",
+    "hledger-web": "hledger-web",
+    "hlint": "hlint",
+    "haskell-chasingbottoms": "ChasingBottoms",
+    "haskell-configfile": "ConfigFile",
+    "haskell-cracknum": "crackNum",
+    "haskell-dav": "DAV",
+    "haskell-decimal": "Decimal",
+    "haskell-diff": "Diff",
+    "haskell-edisonapi": "EdisonAPI",
+    "haskell-edisoncore": "EdisonCore",
+    "haskell-findbin": "FindBin",
+    "haskell-floatinghex": "FloatingHex",
+    "haskell-glob": "Glob",
+    "haskell-gtk": "gtk3",
+    "haskell-graphscc": "GraphSCC",
+    "haskell-hopenpgp": "hOpenPGP",
+    "haskell-http": "HTTP",
+    "haskell-hunit": "HUnit",
+    "haskell-ifelse": "IfElse",
+    "haskell-juicypixels": "JuicyPixels",
+    "haskell-lexer": "haskell-lexer",
+    "haskell-listlike": "ListLike",
+    "haskell-missingh": "MissingH",
+    "haskell-monadlib": "monadLib",
+    "haskell-monadrandom": "MonadRandom",
+    "haskell-network2.8": False,
+    "haskell-only": "Only",
+    "haskell-puremd5": "pureMD5",
+    "haskell-quickcheck": "QuickCheck",
+    "haskell-ranged-sets": "Ranged-sets",
+    "haskell-safesemaphore": "SafeSemaphore",
+    "haskell-sha": "SHA",
+    "haskell-smtlib": "smtLib",
+    "haskell-src-exts": "haskell-src-exts",
+    "haskell-src-exts-util": "haskell-src-exts-util",
+    "haskell-src-meta": "haskell-src-meta",
+    "haskell-statevar": "StateVar",
+    "haskell-stmonadtrans": "STMonadTrans",
+    "haskell-unixutils": "Unixutils",
+    "haskell-x11": "X11",
+    "haskell-x11-xft": "X11-xft",
+    "hasktags": "hasktags",
+    "hoogle": "hoogle",
+    "hopenpgp-tools": "hopenpgp-tools",
+    "idris": "idris",
+    "pandoc": "pandoc",
+    "pandoc-citeproc": "pandoc-citeproc",
+    "pandoc-crossref": "pandoc-crossref",
+    "postgrest": "postgrest",
+    "shellcheck": "ShellCheck",
+    "stack": "stack",
+    "stylish-haskell": "stylish-haskell",
+    "tamarin-prover": "tamarin-prover",
+    "tidalcycles": "tidal",
+    "xmobar": "xmobar",
+    "xmonad": "xmonad",
+    "xmonad-contrib": "xmonad-contrib",
+    "xmonad-utils": "xmonad-utils",
+}
+
+VERSION_SUBSTITUTION = {
+}
+
+URL_PATTERN = "https://www.archlinux.org/packages/%(repo)s/x86_64/%(pkgname)s"
+
+
+def gen_hackage_mapping(repo, quiet=False):
+    counter = 0
+
+    version_mapping = {}
+    arch_package_mapping = {}
+
+    for item in expac("-S", "%P", repo + "/ghc", repo + "/ghc-libs").split():
+        # Fetch package and version
+        package, version = item.split("=")
+
+        # Remove pkgrel
+        version = version.split("-")[0]
+
+        if package in PRESET_PACKAGES:
+            package = PRESET_PACKAGES[package]
+        elif package.startswith("haskell-"):
+            package = package[8:]
+        else:
+            package = False
+
+        if package:
+            if not quiet:
+                print("Found", package, version)
+
+            version_mapping[package] = version
+            arch_package_mapping[package] = "ghc"
+
+            counter += 1
+
+    for line in pacman("-Sl", repo, "--color=never"):
+        # Fetch package and version
+        package, version = line.split()[1:3]
+        arch_package = package
+
+        # Remove pkgrel
+        version = version.split("-")[0]
+
+        if package in PRESET_PACKAGES:
+            package = PRESET_PACKAGES[package]
+        elif package.startswith("haskell-"):
+            package = package[8:]
+        else:
+            package = False
+
+        if package:
+            if not quiet:
+                print("Found", package, version)
+
+            version_mapping[package] = version
+
+            if package not in arch_package_mapping or arch_package in PRESET_PACKAGES:
+                arch_package_mapping[package] = arch_package
+
+            counter += 1
+
+    if not quiet:
+        print(counter, "packages found.")
+
+    return version_mapping, arch_package_mapping
+
+
+def gen_hackage_csv(repo):
+    version_mapping, arch_package_mapping = gen_hackage_mapping(repo)
+    result_fd = StringIO()
+    result_csv = csv.writer(result_fd, quoting=csv.QUOTE_ALL)
+
+    for package, version in version_mapping.items():
+        result_csv.writerow([
+            package,
+            VERSION_SUBSTITUTION.get(version, version),
+            URL_PATTERN % {"pkgname": arch_package_mapping[package], "repo": repo}
+        ])
+
+    result_fd.seek(0)
+    result_body = result_fd.read().rstrip("\r\n")
+    return result_body
+
+
+def submit_hackage(repo):
+    csv_body = gen_hackage_csv(repo)
+    headers={"Content-Type": "text/csv"}
+    if "HACKAGE_USERNAME" in os.environ and "HACKAGE_PASSWORD" in os.environ:
+        auth = (os.environ["HACKAGE_USERNAME"], os.environ["HACKAGE_PASSWORD"])
+    elif "HACKAGE_API_TOKEN" in os.environ:
+        auth = None
+        headers["Authorization"] = "X-ApiKey " + os.environ["HACKAGE_API_TOKEN"]
+    else:
+        print("Please make sure you have HACKAGE_API_TOKEN or HACKAGE_USERNAME and HACKAGE_PASSWORD set to upload the package list.")
+        return
+
+    URL = "https://hackage.haskell.org/distro/Arch/packages"
+    r = requests.put(
+        URL,
+        data=csv_body,
+        auth=auth,
+        headers=headers,
+    )
+    print("Upload:", r.status_code, r.text)
+
+
+def convert_to_archpkg(repo):
+    _, arch_package_mapping = gen_hackage_mapping(repo, quiet=True)
+    try:
+        while True:
+            package = input()
+            print(arch_package_mapping[package])
+    except EOFError:
+        pass
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser(description="Arch Linux hackage generator")
+    parser.add_argument(
+        '--submit-hackage',
+        action="store_true",
+        help="Generate and submit latest package versions to hackage"
+    )
+    parser.add_argument(
+        '--to-archpkg',
+        action="store_true",
+        help="Convert stdin from hackage package names to Arch package names"
+    )
+    parser.add_argument(
+        '--repo',
+        default="community",
+        help="Specify Arch repository to scan"
+    )
+
+    options = parser.parse_args()
+
+    if options.submit_hackage:
+        submit_hackage(options.repo)
+
+    if options.to_archpkg:
+        convert_to_archpkg(options.repo)
