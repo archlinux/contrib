@@ -2,6 +2,9 @@
 
 # SPDX-License-Identifier: GPL-2.0
 
+# Please set HACKAGE_API_TOKEN or both HACKAGE_USERNAME and HACKAGE_PASSWORD to submit package list
+# to hackage!
+
 import os
 import csv
 from io import StringIO
