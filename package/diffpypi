@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0
+
+pypiname=$1
+ver1=$2
+ver2=$3
+filename=$4
+
+if [[ -z "$filename" ]]; then
+  filename=setup.py
+fi
+
+if [[ -z "$pypiname" || -z "$ver1" || -z "$ver2" ]]; then
+  echo "Usage: $0 <PYPI_PROJECT_NAME> <OLD_VERSION> <NEW_VERSION> [FILENAME (default: setup.py)]"
+  exit 1
+fi
+
+test -f /tmp/$pypiname.$ver1 || wget -O /tmp/$pypiname.$ver1 https://pypi.io/packages/source/${pypiname:0:1}/${pypiname}/${pypiname}-$ver1.tar.gz
+test -f /tmp/$pypiname.$ver2 || wget -O /tmp/$pypiname.$ver2 https://pypi.io/packages/source/${pypiname:0:1}/${pypiname}/${pypiname}-$ver2.tar.gz
+
+workdir="$(mktemp -d)"
+pushd "$workdir"
+test -f /tmp/$pypiname.$filename.$ver1 || (tar xf /tmp/$pypiname.$ver1 $pypiname-$ver1/$filename && mv $pypiname-$ver1/$filename /tmp/$pypiname.$filename.$ver1)
+test -f /tmp/$pypiname.$filename.$ver2 || (tar xf /tmp/$pypiname.$ver2 $pypiname-$ver2/$filename && mv $pypiname-$ver2/$filename /tmp/$pypiname.$filename.$ver2)
+popd
+rm -r "$workdir"
+
+git diff --ignore-space-change --ignore-blank-lines --text /tmp/$pypiname.$filename.$ver1 /tmp/$pypiname.$filename.$ver2
