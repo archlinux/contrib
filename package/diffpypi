@@ -7,6 +7,8 @@ ver1=$2
 ver2=$3
 filename=$4
 
+save_filename=${filename//\//_}
+
 if [[ -z "$filename" ]]; then
   filename=setup.py
 fi
@@ -21,9 +23,9 @@ test -f /tmp/$pypiname.$ver2 || wget -O /tmp/$pypiname.$ver2 https://pypi.io/pac
 
 workdir="$(mktemp -d)"
 pushd "$workdir"
-test -f /tmp/$pypiname.$filename.$ver1 || (tar xf /tmp/$pypiname.$ver1 $pypiname-$ver1/$filename && mv $pypiname-$ver1/$filename /tmp/$pypiname.$filename.$ver1)
-test -f /tmp/$pypiname.$filename.$ver2 || (tar xf /tmp/$pypiname.$ver2 $pypiname-$ver2/$filename && mv $pypiname-$ver2/$filename /tmp/$pypiname.$filename.$ver2)
+test -f /tmp/$pypiname.$save_filename.$ver1 || (tar xf /tmp/$pypiname.$ver1 $pypiname-$ver1/$filename && mv $pypiname-$ver1/$filename /tmp/$pypiname.$save_filename.$ver1)
+test -f /tmp/$pypiname.$save_filename.$ver2 || (tar xf /tmp/$pypiname.$ver2 $pypiname-$ver2/$filename && mv $pypiname-$ver2/$filename /tmp/$pypiname.$save_filename.$ver2)
 popd
 rm -r "$workdir"
 
-git diff --ignore-space-change --ignore-blank-lines --text /tmp/$pypiname.$filename.$ver1 /tmp/$pypiname.$filename.$ver2
+git diff --ignore-space-change --ignore-blank-lines --text /tmp/$pypiname.$save_filename.$ver1 /tmp/$pypiname.$save_filename.$ver2
