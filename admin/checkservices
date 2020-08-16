@@ -92,7 +92,7 @@ confirm() {
 
 # get running systemd services
 get_services() {
-    systemctl --no-legend --full --type service --state running|cut -f1 -d' '
+    systemctl --no-legend --full --type service --state running|awk '{print $1}'
 }
 
 # get systemd services with updated mapped files
