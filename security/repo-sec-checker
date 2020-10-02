@@ -1,0 +1,250 @@
+#!/usr/bin/env python
+# Author: Jelle van der Waa <jelle@archlinux.org>
+# SPDX-License-Identifier: GPL-2.0
+
+import argparse
+import functools
+import json
+import re
+import stat
+import sys
+
+from glob import glob
+from io import BytesIO
+from multiprocessing import Pool, cpu_count
+from os.path import basename, join
+
+from elftools.elf.constants import P_FLAGS
+from elftools.elf.dynamic import DynamicSection
+from elftools.elf.elffile import ELFFile
+from elftools.elf.sections import SymbolTableSection
+from libarchive import file_reader
+from tabulate import tabulate
+
+ARCHS = ['x86_64']
+PKG_EXT = '.tar.zst'
+DEFAULT_SOURCE_DIR = '/srv/ftp'
+SOURCE_WHITELIST = ['core', 'extra', 'community', 'multilib']
+
+# FORTIFY_SOURCE checklist
+UNSAFE_FUNCTIONS = set([
+    "asprintf", "mbsnrtowcs", "snprintf",
+    "vsyslog", "confstr", "mbsrtowcs",
+    "sprintf", "vwprintf", "dprint",
+    "mbstowcs", "stpcpy", "wcpcpy",
+    "fgets", "memcpy", "stpncpy",
+    "wcpncpy", "fgets_unlocked", "memmove",
+    "strcat", "wcrtomb", "fgetws",
+    "mempcpy", "strcpy", "wcscat",
+    "fgetws_unlocked", "memset", "strncat",
+    "wcscpy", "fprintf", "obstack_printf",
+    "strncpy", "wcsncat", "fread",
+    "obstack_vprintf", "swprintf", "wcsncpy",
+    "fread_unlocked", "pread", "syslog",
+    "wcsnrtombs", "fwprintf", "pread64",
+    "ttyname_r", "wcsrtombs", "getcwd",
+    "printf", "vasprintf", "wcstombs",
+    "getdomainname", "ptsname_r", "vdprintf",
+    "wctomb", "getgroups", "read",
+    "vfprintf", "wmemcpy", "gethostname",
+    "readlink", "vfwprintf", "wmemmove",
+    "getlogin_r", "readlinkati", "vprintf",
+    "wmempcpy", "gets", "realpath",
+    "vsnprintf", "wmemset", "getwd",
+    "recv", "vsprintf", "wprintf"
+    "longjmp", "recvfrom", "vswprintf"])
+
+STACK_CHK = set(["__stack_chk_fail", "__stack_smash_handler"])
+
+
+class Elf:
+    def __init__(self, fileobj):
+        self.fileobj = fileobj
+        self._elffile = None
+
+    @property
+    def elffile(self):
+        if not self._elffile:
+            self._elffile = ELFFile(self.fileobj)
+        return self._elffile
+
+    def _file_has_magic(self, fileobj, magic_bytes):
+        length = len(magic_bytes)
+        magic = fileobj.read(length)
+        fileobj.seek(0)
+        return magic == magic_bytes
+
+    def is_elf(self):
+        "Take file object, peek at the magic bytes to check if ELF file."
+        return self._file_has_magic(self.fileobj, b"\x7fELF")
+
+    def dynamic_tags(self, key):
+        for section in self.elffile.iter_sections():
+            if not isinstance(section, DynamicSection):
+                continue
+            for tag in section.iter_tags():
+                if tag.entry.d_tag == key:
+                    return tag
+        return None
+
+    def rpath(self, key="DT_RPATH", verbose=False):
+        tag = self.dynamic_tags(key)
+        if tag and verbose:
+            return tag.rpath
+        if tag:
+            return 'RPATH'
+        return ''
+
+    def runpath(self, key="DT_RUNPATH", verbose=False):
+        tag = self.dynamic_tags(key)
+        if tag and verbose:
+            return tag.runpath
+        if tag:
+            return 'RUNPATH'
+
+        return ''
+
+    def is_relro(self):
+        if self.elffile.num_segments() == 0:
+            return "Disabled"
+
+        have_relro = False
+        for segment in self.elffile.iter_segments():
+            if re.search("GNU_RELRO", str(segment['p_type'])):
+                have_relro = True
+                break
+
+        if self.dynamic_tags("DT_BIND_NOW") and have_relro:
+            return "Enabled"
+        if have_relro:
+            return "Partial"
+        return "Disabled"
+
+    def pie(self):
+        header = self.elffile.header
+        if self.dynamic_tags("EXEC"):
+            return "Disabled"
+        if "ET_DYN" in header['e_type']:
+            if self.dynamic_tags("DT_DEBUG"):
+                return "Enabled"
+            return "Enabled" # DSO is PIE
+        return "Disabled"
+
+    def canary(self):
+        for section in self.elffile.iter_sections():
+            if not isinstance(section, SymbolTableSection):
+                continue
+            if section['sh_entsize'] == 0:
+                continue
+            for _, symbol in enumerate(section.iter_symbols()):
+                if symbol.name in STACK_CHK:
+                    return "Enabled"
+        return "Disabled"
+
+    def program_headers(self):
+        pflags = P_FLAGS()
+        if self.elffile.num_segments() == 0:
+            return ""
+
+        found = False
+        for segment in self.elffile.iter_segments():
+            if re.search("GNU_STACK", str(segment['p_type'])):
+                found = True
+                if segment['p_flags'] & pflags.PF_X:
+                    return "Disabled"
+        if found:
+            return "Enabled"
+        return "Disabled"
+
+    def fortify(self, verbose):
+        unsafe_list = []
+
+        for section in self.elffile.iter_sections():
+            if not isinstance(section, SymbolTableSection):
+                continue
+            if section['sh_entsize'] == 0:
+                continue
+            for _, symbol in enumerate(section.iter_symbols()):
+                for pattern in UNSAFE_FUNCTIONS:
+                    if re.match(pattern + "$", symbol.name):
+                        unsafe_list.append(symbol.name)
+
+        if not unsafe_list:
+            return "Enabled"
+        if verbose:
+            return "Partial: " + ",".join(unsafe_list)
+        return "Partial"
+
+    def data(self, verbose):
+        return [self.is_relro(), self.canary(),
+                self.program_headers(), self.pie(),
+                self.rpath(verbose=verbose), self.runpath(verbose=verbose),
+                self.fortify(verbose)]
+
+
+def read_file(verbose, filename):
+    res = set()
+
+    with file_reader(filename) as pkg:
+        for entry in pkg:
+            if not entry.isfile:
+                continue
+
+            if entry.mode & stat.S_IXUSR != stat.S_IXUSR:
+                continue
+
+            fp = BytesIO(b''.join(entry.get_blocks()))
+            elf = Elf(fp)
+
+            if not elf.is_elf():
+                continue
+
+            res = (basename(filename), elf.data(verbose))
+
+    return res
+
+
+def main(source_dir, repos, processes, verbose, html, json_output):
+    tasks = []
+    for subdir in repos:
+        for arch in ARCHS:
+            directory = join(source_dir, subdir, 'os', arch)
+            for filename in glob(join(directory, f'*{PKG_EXT}')):
+                tasks.append((filename))
+
+    with Pool(processes=processes) as pool:
+        results = pool.map(functools.partial(read_file, verbose), tasks)
+
+    if not results:
+        print('No results found', file=sys.stderr)
+        sys.exit(1)
+
+    headers = ["Name", "RELRO", "CANARY", "NX", "PIE", "RPATH", "RUNPATH", "FORTIFY"]
+
+    if json_output:
+        json_data = []
+        hardening = headers[1:]
+        for result in results:
+            if not result:
+                continue
+            data = {i[0]: i[1] for i in zip(hardening, result[1])}
+            json_data.append({'name': result[0], 'data': data})
+
+        print(json.dumps(json_data, indent=4))
+    else:
+        tablefmt = "html" if html else "simple"
+        table = [[r[0]] + r[1] for r in results if r]
+
+        print(tabulate(table, headers=headers, tablefmt=tablefmt))
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Repro Sec Checker')
+    parser.add_argument('--repos', default=SOURCE_WHITELIST, action='store', type=str, nargs='*', help=f'the repository\'s to check (default: {SOURCE_WHITELIST})')
+    parser.add_argument('--source-dir', default=DEFAULT_SOURCE_DIR, help=f'root directory of the repo (default: {DEFAULT_SOURCE_DIR})')
+    parser.add_argument('--processes', type=int, default=cpu_count() * 2, help=f'number of parallel processes (default: {cpu_count()*2})')
+    parser.add_argument('--html', action='store_true', default=False, help='html output (default: False)')
+    parser.add_argument('--json', action='store_true', default=False, help='JSON output (default: False)')
+    parser.add_argument('--verbose', action='store_true', default=False, help='show verbose output RPATH, RUNPATH and not fortified functions (default: False)')
+    args = parser.parse_args()
+    main(args.source_dir, args.repos, args.processes, args.verbose, args.html, args.json)
