@@ -154,7 +154,7 @@ get_missing_dbus() {
     done
 }
 
-# display restart intruction from service name
+# display restart instruction from service name
 display_restart() {
     local service
     echo '-------8<-------------------------------8<---------'
