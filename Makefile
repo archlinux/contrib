@@ -1,5 +1,6 @@
 PREFIX = /usr/local
 SHAREDIR = $(PREFIX)/share/archlinux
+BINDIR = $(PREFIX)/bin
 REPO = contrib
 TAG = $(shell git describe --abbrev=0 --tags)
 
@@ -14,17 +15,17 @@ SCRIPTS = \
 
 .PHONY: install
 install:
-	install -dm0755 $(DESTDIR)$(SHAREDIR)
+	install -dm0755 $(DESTDIR)$(BINDIR)
 	for script in $(SCRIPTS); do \
-		install -Dm755 $${script} -t $(DESTDIR)$(SHAREDIR)/contrib/$${script%/*}; \
+		install -Dm755 $${script} $(DESTDIR)$(BINDIR)/$${script#*/}; \
 	done;
 
 .PHONY: uninstall
 uninstall:
 	for script in $(SCRIPTS); do \
-		rm -rf $(DESTDIR)$(SHAREDIR)/contrib/$${script%/*}; \
+		rm -rf $(DESTDIR)$(BINDIR)/$${script#*/}; \
 	done;
-	rmdir $(DESTDIR)$(SHAREDIR)
+	rmdir $(DESTDIR)$(BINDIR)
 
 .PHONY: tag
 tag:
