@@ -17,7 +17,7 @@ SCRIPTS = \
 install:
 	install -dm0755 $(DESTDIR)$(BINDIR)
 	for script in $(SCRIPTS); do \
-		install -Dm755 $${script} $(DESTDIR)$(BINDIR)/$${script#*/}; \
+		install -Dm755 $${script} $(DESTDIR)$(BINDIR)/; \
 	done;
 
 .PHONY: uninstall
