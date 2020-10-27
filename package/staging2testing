@@ -7,11 +7,13 @@ import sys
 
 import requests
 
-CMD = './db-move {} {} {}'
+CMD = './db-move {} {} '
 
 
 def main(url):
     pkgs = set()
+    communitypkgs = set()
+    multilibpkgs = set()
 
     try:
         r = requests.get(url)
@@ -21,19 +23,20 @@ def main(url):
 
     for pkg in r.json()['packages']:
         pkgbase = pkg['pkgbase']
-        sourcerepo = 'staging'
-        repo = 'testing'
 
         if pkg['repo'] == 'community':
-            sourcerepo = 'community-staging'
-            repo = 'community-testing'
+            communitypkgs.add(pkgbase)
         elif pkg['repo'] == 'multilib':
-            sourcerepo = 'community-staging'
-            repo = 'multilib-testing'
+            multilibpkgs.add(pkgbase)
+        else:
+            pkgs.add(pkgbase)
 
-        pkgs.add(CMD.format(sourcerepo, repo, pkgbase))
-
-    print('\n'.join(sorted(pkgs)))
+    if pkgs:
+        print(CMD.format('staging', 'testing') + ' '.join(pkgs))
+    if communitypkgs:
+        print(CMD.format('community-staging', 'community-testing') + ' '.join(communitypkgs))
+    if multilibpkgs:
+        print(CMD.format('multilib-staging', 'multilib-testing') + ' '.join(multilibpkgs))
 
 
 if __name__ == "__main__":
