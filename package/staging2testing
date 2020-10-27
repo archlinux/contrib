@@ -7,7 +7,7 @@ import sys
 
 import requests
 
-CMD = './db-move {} {} '
+CMD = './db-move {} {} {}'
 
 
 def main(url):
@@ -32,11 +32,11 @@ def main(url):
             pkgs.add(pkgbase)
 
     if pkgs:
-        print(CMD.format('staging', 'testing') + ' '.join(pkgs))
+        print(CMD.format('staging', 'testing', ' '.join(pkgs)))
     if communitypkgs:
-        print(CMD.format('community-staging', 'community-testing') + ' '.join(communitypkgs))
+        print(CMD.format('community-staging', 'community-testing', ' '.join(communitypkgs)))
     if multilibpkgs:
-        print(CMD.format('multilib-staging', 'multilib-testing') + ' '.join(multilibpkgs))
+        print(CMD.format('multilib-staging', 'multilib-testing', ' '.join(multilibpkgs)))
 
 
 if __name__ == "__main__":
