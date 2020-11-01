@@ -62,7 +62,7 @@ find_packages(){
     test ${#filter} -eq 0 && filter=(core extra community multilib)
     if ((local_packages)); then
         # shellcheck disable=SC2046
-        expac -S "%r %a %n %e" $(expac %n) | grep -P "^($(tr ' ' '|' <<< "${filter[*]}"))"
+        expac -S "%r %a %n %e" $(expac %n) | grep -P "^($(tr ' ' '|' <<< "${filter[*]}")) "
     else
         filter=("${filter[@]^}") # Uppercase the repo names
         filter=("${filter[@]/#/&repo=}") # Prepend &repo= to all elements
