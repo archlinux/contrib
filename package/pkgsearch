@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0
+
+set -o errexit
+shopt -s extglob
+
+help(){
+    cat << EOF 
+Usage:
+  $PROGRAM
+
+Flags:
+    -m [maintainer]     find packages from maintainer
+    -q                  local packages
+    -s                  print the package maintainers
+    -l [limit]          co-maintainer limit to filter on default: 1
+    -f [repository]     filter on repository, Default: core extra multilib community
+    -o                  list flagged packages
+    -n                  use pkgname instead of pkgbase (not recommended as we sort away split pkgs)
+    -h                  help messages
+
+Example:
+    Packages from a maintainer with 2 maintainers
+    $ pkgsearch -m Foxboron -l 2
+
+    Orphaned packages in [extra]
+    $ pkgsearch -f extra -l 0 -m orphan
+
+    Packages installed on the system from [core] with 1 maintainer
+    $ pkgsearch -q -f core -l 1
+
+    Locally installed packages from [community], orphaned, and flagged out-of-date 
+    $ pkgsearch -q -f community -l 0 -m orphan -o
+
+EOF
+}
+
+
+limit_maintainers=1
+see_maintainers=0
+out_of_date=""
+name=".pkgbase"
+filter=()
+
+while true; do
+    case "$1" in
+        -m) shift; maintainer_query="maintainer=$1" ;;
+        -q) local_packages=1;;
+        -s) see_maintainers=1;;
+        -l) shift; limit_maintainers=$1;;
+        -f) shift; filter+=("${1,,}");;
+        -o) out_of_date="Flagged";;
+        -n) name=".pkgname";;
+        -h) help;;
+        "") break;;
+    esac
+    shift
+done
+
+find_packages(){
+    test ${#filter} -eq 0 && filter=(core extra community multilib)
+    if ((local_packages)); then
+        # shellcheck disable=SC2046
+        expac -S "%r %a %n %e" $(expac %n) | grep -P "^($(tr ' ' '|' <<< "${filter[*]}")) "
+    else
+        filter=("${filter[@]^}") # Uppercase the repo names
+        filter=("${filter[@]/#/&repo=}") # Prepend &repo= to all elements
+        query="?${maintainer_query}$(printf "%s" "${filter[@]}")&flagged=$out_of_date"
+        curl -s "https://www.archlinux.org/packages/search/json/$query" \
+          | jq -r '.results[] | "\(.repo) \(.arch) \(.pkgname) \(.pkgbase)"' | sort | uniq
+    fi
+}
+
+while read -r repo arch pkg _; do
+    # shellcheck disable=SC2016
+    format="select(.maintainers | length == \$LIMIT) | \"\(${name})\""
+    if ((see_maintainers)); then
+      # shellcheck disable=SC2016
+      format="select(.maintainers | length == \$LIMIT) | \"\(${name})\", (.maintainers | join(\" \"))"
+    fi
+    curl -s "https://www.archlinux.org/packages/$repo/$arch/$pkg/json/" | \
+        jq -r --argjson LIMIT "$limit_maintainers" "$format"
+done <<< "$(find_packages | sort -u -k4,4)"
