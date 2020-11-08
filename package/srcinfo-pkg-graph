@@ -1,0 +1,138 @@
+#!/usr/bin/python
+
+# SPDX-License-Identifier: GPL-2.0
+
+docs = """Usage: srcinfo-pkg-graph [SRCINFO...]
+
+This scripts parses a list of .SRCINFO files and prints out a partial ordering
+of the packages found in the .SRCINFO files. This allows one to pipe the output
+to tsort and tac to create a topologically sorted list.
+
+This list can be built in order to resolve a package dependency chain.
+
+Note: Might not handle cycling dependencies very well.
+
+A python port of the original aurutils awk script:
+https://github.com/AladW/aurutils/blob/master/lib/aur-graph
+
+Examples:
+    $ ls
+    papis  python-arxiv2bib  python-bibtexparser  python-doi  python-habanero  python-isbnlib
+
+    $ srcinfo-graph **/.SRCINFO | tsort | tac
+    python-arxiv2bib
+    python-bibtexparser
+    python-habanero
+    python-isbnlib
+    python-doi
+    papis
+"""
+
+
+import sys
+import subprocess
+
+import pyalpm
+
+PKGBASE = None
+PKGVER = ""
+SPLIT_PKG = False
+
+# pkgbase -> [](check|make)depends
+PKG_DEPS = {}
+
+# pkgname -> pkgbase
+PKG_MAP = {}
+
+# pkgname -> pkgver
+VER_MAP = {}
+
+OPERATORS = ["<=", ">=", "<", "=", ">"]
+
+
+def get_vercmp(ver1, ver2, op):
+    if not op or not ver2:
+        return True
+    if op == "=":
+        return (ver1 == ver2)
+    ret = pyalpm.vercmp(ver1, ver2)
+    if op == "<":
+        return (ret < 0)
+    elif op == ">":
+        return (ret > 0)
+    elif op == "<=":
+        return (ret <= 0)
+    elif op == ">=":
+        return (ret >= 0)
+    else:
+        return None
+
+
+if len(sys.argv) == 1:
+    print(docs)
+
+for path in sys.argv[1:]:
+    with open(path) as f:
+        for line in f.readlines():
+            line = line.strip()
+
+            # If we found a PKGBASE and an empty line
+            # we are parsing split packages.
+            if PKGBASE and not line:
+                SPLIT_PKG = True
+                continue
+
+            key, value = line.split(" = ")
+
+            if key == "pkgbase":
+                PKGBASE = value
+                SPLIT_PKG = False
+                PKG_DEPS[PKGBASE] = []
+
+            if key == "pkgname":
+                PKG_MAP[value] = PKGBASE
+                VER_MAP[value] = PKGVER
+
+            # We don't care (I think)
+            if key == "pkgver" and not SPLIT_PKG:
+                PKGVER = value
+
+            # We don't care (I think)
+            if key in ("checkdepends", "makedepends", "depends") and not SPLIT_PKG:
+                PKG_DEPS[PKGBASE].append(value)
+
+            # This attempts to split up provides
+            if key == "provides":
+                prov = value.split("=")
+                if len(prov) == 2:
+                    VER_MAP[prov[0]] = prov[1]
+                else:
+                    VER_MAP[prov[0]] = PKGVER
+                PKG_MAP[prov[0]] = PKGBASE
+
+for pkgbase, deps in PKG_DEPS.items():
+    print(f"{pkgbase}\t{pkgbase}")
+
+    for dep in deps:
+        dep_pkgname = dep
+        dep_pkgver = None
+        dep_op = None
+
+        # See if there are operations we can split on
+        for op in OPERATORS:
+            if op in dep:
+                dep_op = op
+                break
+
+        if dep_op:
+            dep_pkgname, dep_pkgver = dep.split(dep_op)
+
+        # We only care about packages whoes .SRCINFO we have read
+        if dep_pkgname not in PKG_DEPS.keys():
+            continue
+
+        if get_vercmp(VER_MAP[dep_pkgname], dep_pkgver, dep_op):
+            print(f"{pkgbase}\t{dep_pkgname}")
+        else:
+            print(f"invalid node: {dep_pkgname} {VER_MAP[dep_pkgname]} (required: {dep_op}{dep_pkgver})")
+            sys.exit(1)

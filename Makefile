@@ -11,6 +11,7 @@ SCRIPTS = \
 	package/staging2testing \
 	security/security-tracker-check \
 	package/cleanup-list.py \
+	package/srcinfo-pkg-graph \
 
 
 .PHONY: install
