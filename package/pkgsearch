@@ -12,6 +12,7 @@ Usage:
 
 Flags:
     -m [maintainer]     find packages from maintainer
+    -p [packager]       find packages from the last packager
     -q                  local packages
     -s                  print the package maintainers
     -l [limit]          co-maintainer limit to filter on default: 1
@@ -46,6 +47,7 @@ filter=()
 while true; do
     case "$1" in
         -m) shift; maintainer_query="maintainer=$1" ;;
+        -p) shift; packager_query="&packager=$1" ;;
         -q) local_packages=1;;
         -s) see_maintainers=1;;
         -l) shift; limit_maintainers=$1;;
@@ -66,7 +68,7 @@ find_packages(){
     else
         filter=("${filter[@]^}") # Uppercase the repo names
         filter=("${filter[@]/#/&repo=}") # Prepend &repo= to all elements
-        query="?${maintainer_query}$(printf "%s" "${filter[@]}")&flagged=$out_of_date"
+        query="?${maintainer_query}${packager_query}$(printf "%s" "${filter[@]}")&flagged=$out_of_date"
         curl -s "https://www.archlinux.org/packages/search/json/$query" \
           | jq -r '.results[] | "\(.repo) \(.arch) \(.pkgname) \(.pkgbase)"' | sort | uniq
     fi
