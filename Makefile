@@ -10,7 +10,7 @@ SCRIPTS = \
 	package/pkgsearch \
 	package/staging2testing \
 	security/security-tracker-check \
-	package/cleanup-list.py \
+	package/cleanup-list \
 	package/srcinfo-pkg-graph \
 
 

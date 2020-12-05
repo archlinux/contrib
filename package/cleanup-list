@@ -4,6 +4,7 @@
 
 import io
 import os
+import sys
 import tarfile
 import tempfile
 
@@ -155,9 +156,12 @@ def get_maintainers(repo, arch, pkgname):
 
 
 def main():
-    packages = get_packages()
-    archweb_orphans = get_orphans()
+    if sys.argv[-1] == '-':
+        archweb_orphans = {line.rstrip() for line in sys.stdin}
+    else:
+        archweb_orphans = get_orphans()
 
+    packages = get_packages()
     unneeded = find_unneeded_orphans(packages, archweb_orphans)
     required_orphans = {}
 
