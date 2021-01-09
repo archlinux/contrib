@@ -7,6 +7,7 @@ TAG = $(shell git describe --abbrev=0 --tags)
 SCRIPTS = \
 	admin/checkservices \
 	aur/review	\
+	aur/repos2aur	\
 	package/pkgsearch \
 	package/staging2testing \
 	security/security-tracker-check \
