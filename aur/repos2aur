@@ -10,8 +10,8 @@ fi
 
 PKGBASE=$1
 
-if [[ ! -d "$PKGBASE" ]]; then
-  echo "error: directory $1 does not exists"
+if [[ ! -d "$PKGBASE" || ! -d "$PKGBASE/trunk" ]]; then
+  echo "error: directory $1/{,trunk} does not exists"
   exit 1
 fi
 
