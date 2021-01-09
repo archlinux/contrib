@@ -23,8 +23,8 @@ function cleanup {
 
 trap cleanup EXIT
 
-
-git clone "ssh://aur@aur.archlinux.org/$PKGBASE.git" $TMPDIR
+REPONAME=$(basename "$PKGBASE")
+git clone "ssh://aur@aur.archlinux.org/$REPONAME.git" $TMPDIR
 cp $PKGBASE/trunk/* $TMPDIR
 
 pushd $TMPDIR
