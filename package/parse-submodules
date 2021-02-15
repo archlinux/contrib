@@ -284,11 +284,19 @@ function print_submodule_url {
         _srcline="${_mod_url}"
     fi
     if [[ "${_srcline:0:3}" == 'git' ]]; then
-        _srcline="  ${_srcline}"
+        _srcline='  "${pkgname}-'"$(get-repo-name "${_mod_url}")::${_srcline}"'"'
     else
-        _srcline="  git+${_srcline}"
+        _srcline='  "${pkgname}-'"$(get-repo-name "${_mod_url}")::git+${_srcline}"'"'
     fi
     echo "${_srcline}" >>"${_outfile}"
+}
+
+function print_git_config {
+    local _mod_url="${1}"
+    local _name="${2}"
+    local _outfile="${3}"
+    local _prpline='  git config submodule."'${_name}'".url "${srcdir}/${pkgname}"-'"$(get-repo-name "${_mod_url}")"
+    echo "${_prpline}" >>"${_outfile}"
 }
 
 if ! command -v git &> /dev/null; then
@@ -364,7 +372,7 @@ if [[ ${__USE_ARCHIVE} == 1 ]]; then
     get-file-from-archive "${__GIT_REMOTE}" "${__GIT_REF}" '.gitmodules'
     cp '.gitmodules' "${gmdfile}"
 else
-    # shallow clone repository locally
+    # clone repository locally
     if ! check-branch-or-tag "${__GIT_REMOTE}" "${__GIT_REF}" ; then
         # shallow clone is not possible
         err_echo "Warning: Shallow clone is not possible for exact commit hashes. Preferably use a tag for better performance."
@@ -404,9 +412,11 @@ prepare() {
   git submodule init
 ' >>"${outfile}"
 for name in $(get-module-names "${gmdfile}"); do
-    echo '  git config submodule."'${name}'".url "${srcdir}"/'"$(get-repo-name "$(get-module-url "${gmdfile}" "${name}")")" >>"${outfile}"
+    __mod_url="$(get-module-url "${gmdfile}" "${name}")"
+    print_git_config "${__mod_url}" "${name}" "${outfile}"
 done
-echo '  git submodule update --recursive
+echo '
+  git submodule update --init --recursive
 }' >>"${outfile}"
 
 cat "${outfile}"
