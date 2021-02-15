@@ -277,11 +277,18 @@ function print_submodule_url {
     local _remote_prefix="${2}"
     local _repo_url="${3}"
     local _outfile="${4}"
+    local _srcline=""
     if ! check-existance "${_mod_url}"; then
-        echo "  ${_remote_prefix}$(get-repo-suffix-path "${_repo_url}" "${_mod_url}")" >>"${_outfile}"
+        _srcline="${_remote_prefix}$(get-repo-suffix-path "${_repo_url}" "${_mod_url}")"
     else
-        echo "  ${_mod_url}" >>"${_outfile}"
+        _srcline="${_mod_url}"
     fi
+    if [[ "${_srcline:0:3}" == 'git' ]]; then
+        _srcline="  ${_srcline}"
+    else
+        _srcline="  git+${_srcline}"
+    fi
+    echo "${_srcline}" >>"${_outfile}"
 }
 
 if ! command -v git &> /dev/null; then
