@@ -8,6 +8,7 @@ SCRIPTS = \
 	admin/checkservices \
 	aur/review	\
 	aur/repos2aur	\
+	package/parse-submodules \
 	package/pkgsearch \
 	package/staging2testing \
 	security/security-tracker-check \
