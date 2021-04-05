@@ -28,7 +28,11 @@ shopt -s xpg_echo
 unset GREP_OPTIONS
 
 # systemd cgroup path
-SYSTEMD_CGROUP_BASE_PATH='/sys/fs/cgroup/systemd'
+if [[ -d /sys/fs/cgroup/systemd ]]; then
+  SYSTEMD_CGROUP_BASE_PATH='/sys/fs/cgroup/systemd'
+else
+  SYSTEMD_CGROUP_BASE_PATH='/sys/fs/cgroup'
+fi
 
 # colors
 if [[ -t 1 ]]; then
