@@ -18,14 +18,14 @@ if [[ -z "$pypiname" || -z "$ver1" || -z "$ver2" ]]; then
   exit 1
 fi
 
-test -f /tmp/$pypiname.$ver1 || wget -O /tmp/$pypiname.$ver1 https://pypi.io/packages/source/${pypiname:0:1}/${pypiname}/${pypiname}-$ver1.tar.gz
-test -f /tmp/$pypiname.$ver2 || wget -O /tmp/$pypiname.$ver2 https://pypi.io/packages/source/${pypiname:0:1}/${pypiname}/${pypiname}-$ver2.tar.gz
+test -f "/tmp/$pypiname.$ver1" || wget -O "/tmp/$pypiname.$ver1" "https://pypi.io/packages/source/${pypiname:0:1}/${pypiname}/${pypiname}-$ver1.tar.gz"
+test -f "/tmp/$pypiname.$ver2" || wget -O "/tmp/$pypiname.$ver2" "https://pypi.io/packages/source/${pypiname:0:1}/${pypiname}/${pypiname}-$ver2.tar.gz"
 
 workdir="$(mktemp -d)"
-pushd "$workdir"
-test -f /tmp/$pypiname.$save_filename.$ver1 || (tar xf /tmp/$pypiname.$ver1 $pypiname-$ver1/$filename && mv $pypiname-$ver1/$filename /tmp/$pypiname.$save_filename.$ver1)
-test -f /tmp/$pypiname.$save_filename.$ver2 || (tar xf /tmp/$pypiname.$ver2 $pypiname-$ver2/$filename && mv $pypiname-$ver2/$filename /tmp/$pypiname.$save_filename.$ver2)
-popd
+pushd "$workdir" || exit 1
+test -f "/tmp/$pypiname.$save_filename.$ver1" || (tar xf "/tmp/$pypiname.$ver1" "$pypiname-$ver1/$filename" && mv "$pypiname-$ver1/$filename" "/tmp/$pypiname.$save_filename.$ver1")
+test -f "/tmp/$pypiname.$save_filename.$ver2" || (tar xf "/tmp/$pypiname.$ver2 $pypiname-$ver2/$filename" && mv "$pypiname-$ver2/$filename" "/tmp/$pypiname.$save_filename.$ver2")
+popd || exit 1
 rm -r "$workdir"
 
-git diff --ignore-space-change --ignore-blank-lines --text /tmp/$pypiname.$save_filename.$ver1 /tmp/$pypiname.$save_filename.$ver2
+git diff --ignore-space-change --ignore-blank-lines --text "/tmp/$pypiname.$save_filename.$ver1" "/tmp/$pypiname.$save_filename.$ver2"
