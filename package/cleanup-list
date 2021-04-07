@@ -95,7 +95,7 @@ def parse_repo(dbpath):
 
 
 def get_orphans():
-    base_url = "https://www.archlinux.org/packages/search/json/?maintainer=orphan"
+    base_url = "https://archlinux.org/packages/search/json/?maintainer=orphan"
     query = "repo=Community&repo=Core&repo=Extra&repo=Multilib"
     response = requests.get(f"{base_url}&{query}").json()
     num_pages = response["num_pages"]
@@ -150,7 +150,7 @@ def what_requires(pkgs, pkgname):
 
 
 def get_maintainers(repo, arch, pkgname):
-    url = f"https://www.archlinux.org/packages/{repo}/{arch}/{pkgname}/json/"
+    url = f"https://archlinux.org/packages/{repo}/{arch}/{pkgname}/json/"
     response = requests.get(url)
     return response.json()["maintainers"]
 

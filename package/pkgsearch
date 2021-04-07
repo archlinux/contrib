@@ -69,7 +69,7 @@ find_packages(){
         filter=("${filter[@]^}") # Uppercase the repo names
         filter=("${filter[@]/#/&repo=}") # Prepend &repo= to all elements
         query="?${maintainer_query}${packager_query}$(printf "%s" "${filter[@]}")&flagged=$out_of_date"
-        curl -s "https://www.archlinux.org/packages/search/json/$query" \
+        curl -s "https://archlinux.org/packages/search/json/$query" \
           | jq -r '.results[] | "\(.repo) \(.arch) \(.pkgname) \(.pkgbase)"' | sort | uniq
     fi
 }
@@ -81,6 +81,6 @@ while read -r repo arch pkg _; do
       # shellcheck disable=SC2016
       format="select(.maintainers | length == \$LIMIT) | \"\(${name})\", (.maintainers | join(\" \"))"
     fi
-    curl -s "https://www.archlinux.org/packages/$repo/$arch/$pkg/json/" | \
+    curl -s "https://archlinux.org/packages/$repo/$arch/$pkg/json/" | \
         jq -r --argjson LIMIT "$limit_maintainers" "$format"
 done <<< "$(find_packages | sort -u -k4,4)"
