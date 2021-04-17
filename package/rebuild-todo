@@ -1,0 +1,287 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0
+
+set -eou pipefail
+
+PROGNAME="${BASH_SOURCE[0]##*/}"
+
+bump_pkgrel() {
+    oldrel=$(grep 'pkgrel=' < <(svn cat PKGBUILD) | cut -d= -f2)
+    rel=${oldrel%%.*}
+    newrel=$((rel + 1))
+    sed -i "s/pkgrel=$oldrel/pkgrel=$newrel/" PKGBUILD
+}
+
+usage() {
+    cat <<- _EOF_
+		Usage: ${PROGNAME} [OPTIONS] URL
+		
+		Rebuilds packages from a todo list. If there is a failing build it will
+		drop into a subshell that allows fixing the PKGBUILD.
+		
+		OPTIONS
+		    -m, --message   Sets the commitpkg message. Default is todo list title
+		    -i, --ignore    Give one or more pkgbases to ignore
+		    -f, --filter    Filter for one or more maintainers
+		    -e, --edit      Edit PKGBUILD before building. Default when todo type is "Task"
+		    -h, --help      Show this help text
+		    --dry-run       Show the offload-build and commitpkg being ran
+		    --no-build      Don't build PKGBUILD
+		    --no-publish    Don't run commitpkg after building
+		    --no-bump       Don't bump pkgrel before building (default bumps pkgrel)
+		    --testing       Publish towards testing
+		    --staging       Publish towards staging
+
+		Repository Filters (default: $REPO)
+		    --core         Rebuild [core] packages
+		    --extra        Rebuild [extra] packages
+		    --community    Rebuild [community] packages
+		    --multilib     Rebuild [multilib] packages
+
+		Examples:
+		    Rebuilds all packages in [community] towards [community] ignoring "archlinux-contrib"
+		    $  ${PROGNAME} -i "archlinux-contrib" "https://archlinux.org/todo/some-todo-list/"
+
+		    Rebuilds all packages from [extra] towards [extra-testing]
+		    $  ${PROGNAME} --extra --testing "https://archlinux.org/todo/some-todo-list/"
+
+		    Rebuilds all packages from [core] towards [extra-testing]
+		    $  ${PROGNAME} --core --staging -m "binutils rebuild" "https://archlinux.org/todo/some-todo-list/"
+
+		    Rebuilds all packages from stdin (from [core]) towards [staging]
+		    $ arch-rebuild-order glibc --repos core | ${PROGNAME} --staging -m "glibc rebuild" -
+_EOF_
+}
+
+DRY=0
+STDIN=0
+STAGING=0
+TESTING=0
+NO_BUMP=0
+NO_BUILD=0
+PACKAGES=0
+NO_PUBLISH=0
+EDIT_PKGBUILD=0
+COMMUNITY=1
+CONTINUE=0
+URL=""
+REPO="community"
+BUILD="extra"
+message=""
+filter=("community")
+maintainers=()
+packages=()
+ignore=()
+
+
+if ! ((${#})); then
+    usage
+    exit 0
+fi
+
+while ((${#})); do
+    key="${1}"
+    case ${key} in
+        -h|--help)
+            usage
+            exit 0
+        ;;
+        -m|--message)
+            shift
+            message="${1}"
+        ;;
+        -i|--ignore)
+            shift
+            ignore+=("${1}")
+        ;;
+        -f|--filter)
+            shift
+            maintainers+=("${1}")
+        ;;
+        -e|--edit)
+            EDIT_PKGBUILD=1
+        ;;
+        -d|--dry-run)
+            DRY=1
+        ;;
+        --testing)
+            TESTING=1
+        ;;
+        --staging)
+            STAGING=1
+        ;;
+        --no-build)
+            NO_BUILD=1
+        ;;
+        --no-publish)
+            NO_PUBLISH=1
+        ;;
+        --core)
+            PACKAGES=1
+            COMMUNITY=0
+            BUILD="extra"
+            REPO="core"
+            filter=("extra")
+        ;;
+        --extra)
+            PACKAGES=1
+            COMMUNITY=0
+            BUILD="extra"
+            REPO="extra"
+            filter=("extra")
+        ;;
+        --community)
+            PACKAGES=0
+            COMMUNITY=1
+            BUILD="extra"
+            REPO="community"
+            filter=("community")
+        ;;
+        --multilib)
+            PACKAGES=0
+            COMMUNITY=1
+            REPO="multilib"
+            BUILD="multilib"
+            filter=("multilib")
+        ;;
+        *)
+            if [[ "${key}" == "-" ]]; then
+                STDIN=1
+                break
+            fi
+            if [[ ! "${key}" == https* ]]; then
+                echo "Missing url!"
+                exit 1
+            fi
+            URL="${key}"
+            if [[ ! "$URL" == *json ]]; then
+                URL+="json"
+            fi
+        ;;
+        esac
+        shift
+done
+
+TMPDIR=$(mktemp -d /var/tmp/contrib-rebuild.XXXX) || exit 1
+trap "rm -rf ${TMPDIR}" EXIT
+
+if ((STAGING)); then
+    if [[ $REPO == "multilib" ]]; then
+        REPO="multilib-staging"
+        BUILD="multilib-staging"
+    else
+        BUILD="staging"
+        REPO+="-staging"
+    fi
+fi
+if ((TESTING)); then
+    if [[ $REPO == "multilib" ]]; then
+        REPO="multilib-testing"
+        BUILD="multilib-testing"
+    else
+        BUILD="testing"
+        REPO+="-testing"
+    fi
+fi
+
+if [[ "$URL" != "" ]]; then
+    while read -r json; do
+        readarray -t packages < <(jq --slurpfile repo <(printf '"%s" ' "${filter[@]}") \
+                                     --slurpfile maint <(printf '"%s" ' "${maintainers[@]}") \
+                                     -r '.created as $created 
+                                         | .packages[] 
+                                         | select(.status_str == "Incomplete" ) 
+                                         | select([.repo] | inside($repo)) 
+                                         | select(($maint[0] == "") or select(.maintainers | any([.] | inside($maint))))
+                                         | "\(.pkgbase)"' \
+                                     - <<< "$json" | sort -u)
+
+        # This removes any elements we have ignored.... it's not pretty
+        readarray -t packages < <(comm -1 -3 <(printf "%s\n" "${ignore[@]}" | sort) <(printf "%s\n" "${packages[@]}"| sort))
+
+        # Default to include the list name in the commit message
+        if [[ "$message" == "" ]]; then
+            message="$(jq -r '.name' - <<< "$json")"
+        fi
+
+        # If we are doing a Task we probably want to edit the PKGBUILD
+        if [[ "$(jq -r '.kind' - <<< "$json")" == "Task" ]]; then
+            EDIT_PKGBUILD=1
+        fi
+    done <<< "$(curl -s "$URL")"
+fi
+
+if ((STDIN)); then
+    readarray -t packages /dev/stdin
+fi
+
+
+if ((DRY)); then
+    echo "Would rebuild the following packages:"
+    printf '    %s\n' "${packages[@]}"
+    echo "With:"
+    echo "    offload-build -r $BUILD"
+    echo "    commitpkg $REPO \"$message\""
+    exit 0
+fi
+
+if ! ((${#packages[@]})); then
+    echo "No packages to rebuild!"
+    exit 1
+fi
+echo "Rebuilding packages:"
+printf '    %s\n' "${packages[@]}"
+printf "Confirm..."
+read <&1
+
+if ((COMMUNITY)); then
+    svn checkout -N svn+ssh://svn-community@repos.archlinux.org/srv/repos/svn-community/svn "$TMPDIR/community"
+    pushd "$TMPDIR/community" &>/dev/null
+fi
+if ((PACKAGES)); then
+    svn checkout -N svn+ssh://svn-community@repos.archlinux.org/srv/repos/svn-packages/svn "$TMPDIR/packages"
+    pushd "$TMPDIR/packages" &>/dev/null
+fi
+svn update -- "${packages[@]}"
+
+for pkg in "${packages[@]}"; do
+    pushd "$pkg/trunk" &>/dev/null
+
+    if ! ((NO_BUMP)); then
+        bump_pkgrel
+    fi
+
+    # This should help us figure out if the package is already built
+    readarray -t pkgs < <(makepkg --packagelist)
+    if [[ -f ${pkgs[0]} ]]; then
+        echo "${pkg[0]} has already been rebuilt!"
+    else
+        if ((EDIT_PKGBUILD)); then
+            "$EDITOR" PKGBUILD
+        fi
+        if ! ((NO_BUILD)); then
+            SKIP_BUILD=0
+            while true; do
+                if offload-build -r "$BUILD"; then
+                    break
+                fi
+                echo "We failed to build! You are in a subshell to fix the build. Exit the shell to build again."
+                $SHELL || true
+                read -p "Skip build? [N/y]" -n 1 -r
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    SKIP_BUILD=1
+                    break
+                fi
+            done
+            if ((SKIP_BUILD)); then
+                popd &>/dev/null
+                continue
+            fi
+        fi
+        if ! ((NO_PUBLISH)); then
+            commitpkg "$REPO" "$message"
+        fi
+    fi
+    popd &>/dev/null
+done
