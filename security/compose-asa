@@ -13,7 +13,7 @@ for asa in $(curl -s "https://security.archlinux.org/todo/json" | jq -r '.adviso
 	read -r -e -p "Send $asa? [y/N]" PR
 	[[ $PR == "n" || $PR == "N" || $PR == "" ]]	 && continue
 	TMPFILE=$(mktemp)
-	echo "To: arch-security@archlinux.org" > "$TMPFILE"
+	echo "To: arch-security@lists.archlinux.org" > "$TMPFILE"
 	curl -s "https://security.archlinux.org/$asa/generate/raw" >> "$TMPFILE"
 	$COMPOSE_ASA_EMAIL "$TMPFILE"
 done
