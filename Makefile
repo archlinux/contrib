@@ -14,6 +14,7 @@ SCRIPTS = \
 	security/security-tracker-check \
 	package/cleanup-list \
 	package/srcinfo-pkg-graph \
+	package/rebuild-todo
 
 
 .PHONY: install
