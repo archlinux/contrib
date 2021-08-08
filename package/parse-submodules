@@ -390,8 +390,8 @@ fi
 cd "${tempdir}"
 touch "${outfile}"
 __SHORT_HASH="$(get-short-hash "${__GIT_REMOTE}" "${__GIT_REF}")"
-echo '# Your sources array should look something like:
-sources=(
+echo '# Your source array should look something like this:
+source=(
   "${pkgname}::'${__GIT_REMOTE}'#commit='${__SHORT_HASH}'"' >>"${outfile}"
 __REMOTE_PREFIX="$(get-proto "${__GIT_REMOTE}")$(get-user "${__GIT_REMOTE}")$(get-host "${__GIT_REMOTE}")$(get-port "${__GIT_REMOTE}")"
 for name in $(get-module-names "${gmdfile}"); do
@@ -406,7 +406,7 @@ for pid in $pids; do
 done
 echo ')' >>"${outfile}"
 
-echo '# Put the following in your PKGBUILD prepare function:
+echo '# Update the prepare function in your PKGBUILD to initialize the submodules:
 prepare() {
   cd "${srcdir}/${pkgname}"
   git submodule init
