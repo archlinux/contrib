@@ -1,0 +1,14 @@
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: archlinux/archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: pacman -Syu --noconfirm make flake8 shellcheck
+      - uses: actions/checkout@v2
+      - name: Run tests
+        run: |
+           make PREFIX=/usr DESTDIR="$(mktemp -d)" install
+           make check || true
+           SHELLCHECK_OPTS="-S error" make check

@@ -4,18 +4,22 @@ BINDIR = $(PREFIX)/bin
 REPO = contrib
 TAG = $(shell git describe --abbrev=0 --tags)
 
-SCRIPTS = \
+BASH_SCRIPTS = \
 	admin/checkservices \
 	aur/review	\
 	aur/repos2aur	\
 	package/parse-submodules \
 	package/pkgsearch \
+	package/rebuild-todo
+
+PYTHON_SCRIPTS = \
 	package/staging2testing \
 	security/security-tracker-check \
 	package/cleanup-list \
-	package/srcinfo-pkg-graph \
-	package/rebuild-todo
+	package/srcinfo-pkg-graph
 
+SCRIPTS = \
+	$(BASH_SCRIPTS) $(PYTHON_SCRIPTS)
 
 .PHONY: install
 install:
@@ -41,3 +45,11 @@ release:
 	git archive --prefix=${REPO}-${TAG}/ -o releases/${REPO}-${TAG}.tar.gz ${TAG};
 	gpg --detach-sign -o releases/${REPO}-${TAG}.tar.gz.sig releases/${REPO}-${TAG}.tar.gz
 	hub release create -m "Release: ${TAG}" -a releases/${REPO}-${TAG}.tar.gz.sig -a releases/${REPO}-${TAG}.tar.gz ${TAG}
+
+check: check-bash check-python
+
+check-bash: $(BASH_SCRIPTS)
+	shellcheck $^
+
+check-python: $(PYTHON_SCRIPTS)
+	flake8 --ignore E123,E126,E128,E305,E501 $^
