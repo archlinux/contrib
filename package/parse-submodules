@@ -303,7 +303,7 @@ if ! command -v git &> /dev/null; then
     fail "'git' command not found." 1
 fi
 
-if [[ $# < 1 ]]; then
+if [[ $# -lt 1 ]]; then
     fail "$(help)" 1
 fi
 
