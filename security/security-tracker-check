@@ -6,7 +6,6 @@
 # Requires python-requests
 
 import sys
-import subprocess
 import re
 import requests
 
@@ -53,16 +52,16 @@ class bcolors:
         self._print(" ->", text, c=self.OKGREEN)
 
     def msg(self, text):
-        self._print("==>",text, c=self.WARNING)
+        self._print("==>", text, c=self.WARNING)
 p = bcolors()
 
 
 url_json = 'https://security.archlinux.org/{}/json'
-url= 'https://security.archlinux.org/{}'
+url = 'https://security.archlinux.org/{}'
 
 
 if __name__ == "__main__":
-    matches = set(re.findall("CVE-\d{4}-\d*", sys.stdin.read()))
+    matches = set(re.findall(r"CVE-\d{4}-\d*", sys.stdin.read()))
     for match in matches:
         r = requests.get(url_json.format(match))
         if r.status_code == 200:

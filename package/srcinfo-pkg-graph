@@ -2,6 +2,9 @@
 
 # SPDX-License-Identifier: GPL-2.0
 
+import sys
+import pyalpm
+
 docs = """Usage: srcinfo-pkg-graph [SRCINFO...]
 
 This scripts parses a list of .SRCINFO files and prints out a partial ordering
@@ -28,11 +31,6 @@ Examples:
     papis
 """
 
-
-import sys
-import subprocess
-
-import pyalpm
 
 PKGBASE = None
 PKGVER = ""
