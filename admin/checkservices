@@ -39,6 +39,7 @@ if [[ -t 1 ]]; then
     C_BOLD='\e[1m'
     C_BLUE='\e[34m'
     C_RED='\e[31m'
+    C_YELLOW='\e[33m'
     C_WHITE='\e[37m'
     C_RESET='\e[m'
 fi
@@ -57,6 +58,11 @@ USER_SLICE=0        # act on users services
 # print $* as an arrow line
 arrow() {
     printf "${C_BOLD}${C_BLUE}:: ${C_WHITE}%s${C_RESET}\n" "$*"
+}
+
+# print $* as an warning message
+warn() {
+    printf "${C_BOLD}${C_YELLOW}Warning:: ${C_WHITE}%s${C_RESET}\n" "$*" >&2
 }
 
 # print $* as an error message
@@ -315,6 +321,12 @@ main() {
         systemctl --failed --all --no-pager --no-legend --full list-units
     fi
 }
+
+# disable pacdiff by default if not installed
+if  ! command -v pacdiff &> /dev/null ; then
+    warn 'skipping pacdiff as not installed'
+    PACDIFF=0
+fi
 
 main "$@"
 
