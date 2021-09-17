@@ -54,6 +54,9 @@ SERIALIZE=0         # run in parallel
 STATUS=1            # display status after systemctl
 USER_SLICE=0        # act on users services
 
+# disable pacdiff by default if not installed
+command -v pacdiff >/dev/null 2>&1 || PACDIFF=0
+
 # print $* as an arrow line
 arrow() {
     printf "${C_BOLD}${C_BLUE}:: ${C_WHITE}%s${C_RESET}\n" "$*"
