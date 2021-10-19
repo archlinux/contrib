@@ -24,15 +24,19 @@ function cleanup {
 trap cleanup EXIT
 
 REPONAME=$(basename "$PKGBASE")
-git clone "ssh://aur@aur.archlinux.org/$REPONAME.git" $TMPDIR
+
+# The AUR does not support a main default branch, so we have to git init with a
+# master branch explictly https://bugs.archlinux.org/task/72163
+git init -b master $TMPDIR
 cp $PKGBASE/trunk/* $TMPDIR
 
 pushd $TMPDIR
+git remote add origin "ssh://aur@aur.archlinux.org/$REPONAME.git"
 makepkg --printsrcinfo > .SRCINFO
 git add .SRCINFO
 git add *
 
 git commit -m 'import from community'
-git push
+git push origin master
 
 popd
