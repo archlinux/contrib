@@ -1,0 +1,157 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+
+set -o errexit
+shopt -s extglob
+
+REBUILD_PKGDEST=${REBUILD_PKGDEST:-"$PWD/build"}
+STARTDIR="$PWD"
+
+BUILDHOST='build.archlinux.org'
+
+TMPFILE=$(mktemp -d /var/tmp/repo.XXXX) || exit 1
+trap 'rm -rf "$TMPFILE"' EXIT
+
+MAKEPKG_ARGS=(--syncdeps --noconfirm --log --holdver --skipinteg)
+usage(){
+cat << EOF > "/dev/stdout"
+Usage: $argv0 <flags>
+
+$argv0 builds isolated package graphs into a directory. This allows
+testing new package cycles without having to manually keep track of package
+includes.
+
+Note this assumes a valid .SRCINFO file alongside all PKGBUILDs.
+
+Flags:
+    TBA
+
+Examples:
+
+    Build a dependency chain
+    $ ls
+    papis  python-arxiv2bib  python-bibtexparser  python-doi  python-habanero  python-isbnlib
+
+    $ srcinfo-graph **/.SRCINFO | tsort | tac
+    python-arxiv2bib
+    python-bibtexparser
+    python-habanero
+    python-isbnlib
+    python-doi
+    papis
+
+    $ $argv0
+    // Builds all the packages in order to $PWD/build
+
+    One can also make a build order file which can account for rebuild
+    cycles which can not be encoded into a .SRCINFO file.
+    $ cat buildorder
+    python-arxiv2bib
+    python-bibtexparser --nocheck
+    papis
+    python-habanero
+    python-isbnlib --nocheck
+    python-doi
+    papis
+
+    $ $argv0 -b ./buildorder
+    // This would build the above order
+
+EOF
+    exit 1
+}
+
+source /usr/share/makepkg/util/util.sh
+source /usr/share/makepkg/util/message.sh
+source /usr/share/makepkg/util/parseopts.sh
+
+opt_short='sob:'
+opt_long=('sign' 'offload' 'buildorder' 'repo')
+
+orig_args="$*"
+
+if ! parseopts "$opt_short" "${opt_long[@]}" -- "$@"; then
+    usage
+fi
+set -- "${OPTRET[@]}"
+
+offload_build=0 multilib=0 sign=0 buildorder="" arch="x86_64"
+repo_config="extra"
+unset keep
+while true; do
+    case "$1" in
+        -o|--offload) offload_build=1 ;;
+        -b|--buildorder) shift; buildorder="$1" ;;
+        --repo) shift; repository_name="$1";;
+        --sign) sign=1;;
+        --multilib) multilib=1;;
+        --arch) shift; arch="$1";;
+        --extra) repo_config="extra";;
+        --testing) repo_config="testing";;
+        --staging) repo_config="staging";;
+        --gnome-unstable) repo_config="gnome-unstable";;
+        --kde-unstable) repo_config="kde-unstable";;
+        --) shift; break ;;
+    esac
+    shift
+done
+
+archbuild_arch="${arch}"
+if ((multilib)); then
+    archbuild_arch=
+    repo_config="multilib-$repo_config"
+fi
+
+if [ -n "$buildorder" ]; then
+    exec {fd}< <(cat "$buildorder")
+elif [ -f ./PKGBUILD ]; then
+    exec {fd}< <(printf '\n')
+else
+    exec {fd}< <(srcinfo-pkg-graph **/.SRCINFO  | tsort |tac)
+fi
+
+export PKGDEST="$TMPFILE/pkgdest" && mkdir -p "$PKGDEST"
+export LOGDEST="$TMPFILE"
+
+pkglist=()
+offload_tmp=$(ssh "$BUILDHOST" mktemp -d '$HOME/.cache/repoctl.XXXX')
+while IFS= read -ru "$fd" path; do
+    read -r -a buildtarget <<< "$path"
+    path="${buildtarget[0]}"
+    MAKEPKG_ARGS+=(${buildtarget[@]:1})
+    if [[ -f "$STARTDIR/$path/PKGBUILD" ]]; then
+        cd_safe "$STARTDIR/$path"
+    elif [[ -f "$STARTDIR/$path/trunk/PKGBUILD" ]]; then
+        cd_safe "$STARTDIR/$path/trunk"
+    fi
+    mapfile -t packagelist < <( PKGDEST="$REBUILD_PKGDEST" makepkg --packagelist)
+    rsync -a "${pkglist[@]}" "$BUILDHOST:$offload_tmp"
+    echo "Including packages: ${pkglist[@]}"
+    if ((offload_build)); then
+        include_pkglist=("${pkglist[@]/#/-I }")
+        include_pkglist=("${include_pkglist[@]/"$REBUILD_PKGDEST"/"$offload_tmp"}")
+        offload-build -s "$BUILDHOST" -r "$repo_config" -a "$arch" -- -- ${include_pkglist[@]} -- ${MAKEPKG_ARGS[@]}
+    else
+        echo "${repo_config}${archbuild_arch:+-$archbuild_arch}-build" -- ${pkglist[@]} -- ${MAKEPKG_ARGS[@]}
+    fi
+    cd_safe "$PKGDEST"
+    built_pkglist=(!(*.sig))
+    siglist=()
+    if ((sign)); then
+        for p in "${built_pkglist[@]}"; do
+            gpg --detach-sign --no-armor --batch --output "$p".sig "$p"
+            siglist+=("$p".sig)
+        done
+    fi
+    mv -f "${built_pkglist[@]}" "${siglist[@]}" "$REBUILD_PKGDEST"
+    for i in "${packagelist[@]}"; do
+         # I'm not sure if we really want to remove the previous package from the array?
+         # pkglist=(${pkglist[@]//*$i*})
+         pkglist+=($i)
+    done
+done
+ssh "$BUILDHOST" rm -rf "$offload_tmp"
+
+if [ -n "$repository_name" ]; then
+    LANG=C repo-add "$REBUILD_PKGDEST/$repository_name.db.tar" "${pkglist[@]}"
+fi
