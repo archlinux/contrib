@@ -130,6 +130,24 @@ function get-short-hash {
     echo "${_short_ref}"
 }
 
+function get-fragment {
+    local _repo_url="${1}"
+    local _ref="${2}"
+    verbose_echo "Getting fragment tag for Git reference '${_ref}' from repository at: ${_repo_url}" ${__VERBOSE_MODE}
+    local _fragment="$(git ls-remote --tags "${_repo_url}" "${_ref}")"
+    if [[ ! -z $_fragment ]]; then
+        echo '#tag='"${_ref}"
+        return
+    fi
+    local _fragment="$(git ls-remote --heads "${_repo_url}" "${_ref}")"
+    if [[ ! -z $_fragment ]]; then
+        echo '#branch='"${_ref}"
+        return
+    fi
+    local _short_ref="$(get-short-hash "${_repo_url}" "${_ref}")"
+    echo '#commit='"${_short_ref}"
+}
+
 function get-branch-or-tag {
     local _repo_url="${1}"
     local _ref="${2}"
@@ -389,10 +407,10 @@ else
 fi
 cd "${tempdir}"
 touch "${outfile}"
-__SHORT_HASH="$(get-short-hash "${__GIT_REMOTE}" "${__GIT_REF}")"
+__FRAGMENT="$(get-fragment "${__GIT_REMOTE}" "${__GIT_REF}")"
 echo '# Your source array should look something like this:
 source=(
-  "${pkgname}::'${__GIT_REMOTE}'#commit='${__SHORT_HASH}'"' >>"${outfile}"
+  "${pkgname}::'${__GIT_REMOTE}${__FRAGMENT}'"' >>"${outfile}"
 __REMOTE_PREFIX="$(get-proto "${__GIT_REMOTE}")$(get-user "${__GIT_REMOTE}")$(get-host "${__GIT_REMOTE}")$(get-port "${__GIT_REMOTE}")"
 for name in $(get-module-names "${gmdfile}"); do
     __mod_url="$(get-module-url "${gmdfile}" "${name}")"
