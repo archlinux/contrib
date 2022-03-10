@@ -139,7 +139,7 @@ function get-fragment {
         echo '#tag='"${_ref}"
         return
     fi
-    local _fragment="$(git ls-remote --heads "${_repo_url}" "${_ref}")"
+    _fragment="$(git ls-remote --heads "${_repo_url}" "${_ref}")"
     if [[ ! -z $_fragment ]]; then
         echo '#branch='"${_ref}"
         return
