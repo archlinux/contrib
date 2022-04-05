@@ -235,7 +235,7 @@ usage() {
     echo "description: check for updated files in a service"
     echo 'options:'
     echo '  -h: this help' >&2
-    echo "  -c: auto confirmation" >&2
+    echo "  -a/-A: auto confirmation (or not) (default: $AUTOCONFIRM)" >&2
     echo "  -l/-L: call (or not) systemd daemon-(reload|reexec) (default: $RELOAD)" >&2
     echo "  -f/-F: display (or not) failed services before quit (default: $FAILED)" >&2
     echo "  -p/-P: call (or not) pacdiff before act (default: $PACDIFF)" >&2
@@ -250,9 +250,9 @@ usage() {
 # set options as global vars
 argparse() {
     local opt
-    while getopts 'ahFfLlPpRrSsUuZz' opt; do
+    while getopts 'AahFfLlPpRrSsUuZz' opt; do
         case $opt in
-            a) AUTOCONFIRM=0;;
+            A) AUTOCONFIRM=0;;      a) AUTOCONFIRM=1;;
             F) FAILED=0;;           f) FAILED=1;;
             L) RELOAD=0;;           l) RELOAD=1;;
             P) PACDIFF=0;;          p) PACDIFF=1;;
