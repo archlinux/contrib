@@ -240,7 +240,7 @@ if ((COMMUNITY)); then
     pushd "$TMPDIR/community" &>/dev/null
 fi
 if ((PACKAGES)); then
-    svn checkout -N svn+ssh://svn-community@repos.archlinux.org/srv/repos/svn-packages/svn "$TMPDIR/packages"
+    svn checkout -N svn+ssh://svn-packages@repos.archlinux.org/srv/repos/svn-packages/svn "$TMPDIR/packages"
     pushd "$TMPDIR/packages" &>/dev/null
 fi
 svn update -- "${packages[@]}"
