@@ -268,7 +268,7 @@ for pkg in "${packages[@]}"; do
                 fi
                 echo "We failed to build! You are in a subshell to fix the build. Exit the shell to build again."
                 $SHELL || true
-                read -p "Skip build? [N/y]" -n 1 -r
+                read -p "Skip build? [N/y] " -n 1 -r
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
                     SKIP_BUILD=1
                     break
