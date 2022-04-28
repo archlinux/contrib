@@ -2,6 +2,9 @@
 # Copyright (c) 2021 Konstantin Gizdov
 # SPDX-License-Identifier: GPL-2.0
 
+# environment locale LC_ALL
+__ENV_LC_ALL="${LC_ALL:-C}"
+
 # current working directory
 __CWKDIR="${PWD}"
 # script directory
@@ -177,23 +180,33 @@ function get-reference-hash {
 }
 
 function get-module-names {
-    git config --file "${1}" --get-regexp path | awk -F'.' '{print $2}'
-}
-
-function get-module-urls {
-    git config --file "${1}" --get-regexp url | awk '{print $2}'
+    git config --file "${1}" --get-regexp path | awk -F'.' '{print $2}' | LC_ALL="${__ENV_LC_ALL}" sort
 }
 
 function get-module-url {
     git config --file "${1}" --get-regexp url | grep "${2}.url" | awk '{print $2}'
 }
 
-function get-module-paths {
-    git config --file "${1}" --get-regexp path | awk '{print $2}'
-}
-
 function get-module-path {
     git config --file "${1}" --get-regexp path | grep "${2}.path" | awk '{print $2}'
+}
+
+function get-module-urls {
+    # since we are sorting by module name, we need to
+    # preserve the order here as well
+    for name in $(get-module-names "${1}"); do
+        __mod_url="$(get-module-url "${gmdfile}" "${name}")"
+        echo "${__mod_url}"
+    done
+}
+
+function get-module-paths {
+    # since we are sorting by module name, we need to
+    # preserve the order here as well
+    for name in $(get-module-names "${1}"); do
+        __mod_path="$(get-module-path "${gmdfile}" "${name}")"
+        echo "${__mod_path}"
+    done
 }
 
 function get-proto {
@@ -329,6 +342,8 @@ tempdir="$(mktemp -d)"
 gcldir="${tempdir}/gitdir"
 gmdfile="${tempdir}/found_gitmodules"
 outfile="${tempdir}/out"
+outmodurlfile="${tempdir}/outmodurl"
+outgitconffile="${tempdir}/outgitconf"
 trap "rm -rf ${tempdir}; cd ${__CWKDIR}" EXIT
 
 cd "${tempdir}"
@@ -415,13 +430,15 @@ __REMOTE_PREFIX="$(get-proto "${__GIT_REMOTE}")$(get-user "${__GIT_REMOTE}")$(ge
 for name in $(get-module-names "${gmdfile}"); do
     __mod_url="$(get-module-url "${gmdfile}" "${name}")"
     # this is slow so run in parallel, store PIDs and wait on all later
-    print_submodule_url "${__mod_url}" "${__REMOTE_PREFIX}" "${__GIT_REMOTE}" "${outfile}" &
+    print_submodule_url "${__mod_url}" "${__REMOTE_PREFIX}" "${__GIT_REMOTE}" "${outmodurlfile}" &
     pids="$pids $!"
 done
 for pid in $pids; do
     # wait for all PIDs from above
     wait $pid
 done
+# print sorted for consistency and more readable diffs
+LC_ALL="${__ENV_LC_ALL}" sort "${outmodurlfile}" >>"${outfile}"
 echo ')' >>"${outfile}"
 
 echo '# Update the prepare function in your PKGBUILD to initialize the submodules:
@@ -431,8 +448,10 @@ prepare() {
 ' >>"${outfile}"
 for name in $(get-module-names "${gmdfile}"); do
     __mod_url="$(get-module-url "${gmdfile}" "${name}")"
-    print_git_config "${__mod_url}" "${name}" "${outfile}"
+    print_git_config "${__mod_url}" "${name}" "${outgitconffile}"
 done
+# print sorted for consistency and more readable diffs
+LC_ALL="${__ENV_LC_ALL}" sort "${outgitconffile}" >>"${outfile}"
 echo '
   git submodule update --init --recursive
 }' >>"${outfile}"
