@@ -240,7 +240,7 @@ if ((COMMUNITY)); then
     pushd "$TMPDIR/community" &>/dev/null
 fi
 if ((PACKAGES)); then
-    svn checkout -N svn+ssh://svn-community@repos.archlinux.org/srv/repos/svn-packages/svn "$TMPDIR/packages"
+    svn checkout -N svn+ssh://svn-packages@repos.archlinux.org/srv/repos/svn-packages/svn "$TMPDIR/packages"
     pushd "$TMPDIR/packages" &>/dev/null
 fi
 svn update -- "${packages[@]}"
@@ -268,7 +268,7 @@ for pkg in "${packages[@]}"; do
                 fi
                 echo "We failed to build! You are in a subshell to fix the build. Exit the shell to build again."
                 $SHELL || true
-                read -p "Skip build? [N/y]" -n 1 -r
+                read -p "Skip build? [N/y] " -n 1 -r
                 if [[ $REPLY =~ ^[Yy]$ ]]; then
                     SKIP_BUILD=1
                     break
