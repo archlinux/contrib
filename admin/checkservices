@@ -278,11 +278,11 @@ main() {
     # avoid to be sighup'ed by interactive shell
     trap '' SIGHUP
 
-    # from now, we need to be root
-    (( $UID != 0 )) && error 'You need to be root' && exit 1
-
     # parse command line options
     argparse "$@"
+
+    # from now, we need to be root
+    (( $UID != 0 )) && error 'You need to be root' && exit 1
 
     # call pacdiff to ensure config files are updated before restart
     if (( $PACDIFF )); then
