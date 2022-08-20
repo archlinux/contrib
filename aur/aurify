@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Script to move things from community to AUR while preserving the history
+
+# SPDX-License-Identifier: GPL-2.0
+
+if (( $# == 0 )); then
+  echo "error: No arguments passed."
+  echo "pkgbase is a required argument"
+  exit 1
+fi
+
+PKGBASE=$1
+
+TMPDIR=$(mktemp -d)
+
+function cleanup {
+  rm -rf "$TMPDIR"
+}
+
+trap cleanup EXIT
+
+# Get the AUR repository even if empty
+git clone "ssh://aur@aur.archlinux.org/$PKGBASE.git" $TMPDIR
+pushd $TMPDIR
+# Get the community history
+git fetch https://github.com/archlinux/svntogit-community "packages/$PKGBASE":community
+git checkout community
+# Split the trunk folder
+git subtree split -b trunk -P trunk HEAD
+git checkout trunk
+# Add .SRCINFO to satisfy the AUR hook
+FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --tree-filter 'makepkg --printsrcinfo > .SRCINFO'
+# Merge back to master
+if [[ $(git branch --list master) ]]; then
+    # If the master branch already exists (the package was in the AUR before),
+    # we just reattach the repo branch on top of the master one
+    git replace --graft $(git rev-list --max-parents=0 trunk) master
+    git checkout master
+    git merge trunk
+else
+    # Else we plainly copy the trunk branch as master
+    git branch --copy trunk master
+    git checkout master
+fi
+git push origin master
+popd
