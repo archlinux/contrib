@@ -23,7 +23,7 @@ usage() {
 		OPTIONS
 		    -m, --message   Sets the commitpkg message. Default is todo list title
 		    -i, --ignore    Give one or more pkgbases to ignore
-		    -f, --filter    Filter for one or more maintainers
+		    -f, --filter    Filter for one or more maintainers (orphan for orphan packages)
 		    -e, --edit      Edit PKGBUILD before building. Default when todo type is "Task"
 		    -h, --help      Show this help text
 		    --dry-run       Show the offload-build and commitpkg being ran
@@ -193,7 +193,7 @@ if [[ "$URL" != "" ]]; then
                                          | .packages[] 
                                          | select(.status_str == "Incomplete" ) 
                                          | select([.repo] | inside($repo)) 
-                                         | select(($maint[0] == "") or select(.maintainers | any([.] | inside($maint))))
+                                         | select(($maint[0] == "") or (($maint[0] == "orphan") and .maintainers == []) or (select(.maintainers | any([.] | inside($maint)))))
                                          | "\(.pkgbase)"' \
                                      - <<< "$json" | sort -u)
 
