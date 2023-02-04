@@ -10,8 +10,9 @@ import tempfile
 
 import requests
 
+PKGS = dict[str, dict[str, str | set[str]]]
 
-def parse_desc(iofile: io.TextIOWrapper):
+def parse_desc(iofile: io.TextIOWrapper) -> dict[str, list[str]]:
     store = {}
     blockname = None
     for line in iofile:
@@ -26,7 +27,7 @@ def parse_desc(iofile: io.TextIOWrapper):
     return store
 
 
-def parse_repo(dbpath):
+def parse_repo(dbpath: str) -> PKGS:
     pkgfields = ("depends", "makedepends", "optdepends", "checkdepends")
     repodb = tarfile.open(dbpath)
     reponame = os.path.basename(dbpath).split(".")[0]
@@ -37,7 +38,8 @@ def parse_repo(dbpath):
             pkgid = tarinfo.name
             desc_tar = repodb.getmember(os.path.join(pkgid, "desc"))
             desc_file = repodb.extractfile(desc_tar)
-            desc_file = io.TextIOWrapper(io.BytesIO(desc_file.read()), encoding="UTF-8")
+            desc_file = io.TextIOWrapper(io.BytesIO(
+                desc_file.read()), encoding="UTF-8")
             desc = parse_desc(desc_file)
             del desc_file
 
@@ -82,7 +84,8 @@ def parse_repo(dbpath):
                 if key in pkgs[pkgname]:
                     tmp = pkgs[pkgname][key]
                     for ch in ("<", ">", "="):
-                        tmp = {dep.split(ch)[0] if ch in dep else dep for dep in tmp}
+                        tmp = {
+                            dep.split(ch)[0] if ch in dep else dep for dep in tmp}
 
                     pkgs[pkgname][key] = tmp
 
@@ -94,7 +97,7 @@ def parse_repo(dbpath):
     return pkgs
 
 
-def get_orphans():
+def get_orphans() -> set[str]:
     base_url = "https://archlinux.org/packages/search/json/?maintainer=orphan"
     query = "repo=Community&repo=Core&repo=Extra&repo=Multilib"
     response = requests.get(f"{base_url}&{query}").json()
@@ -110,7 +113,7 @@ def get_orphans():
     return {pkg["pkgname"] for pkg in results}
 
 
-def get_packages(mirror="http://mirror.pkgbuild.com"):
+def get_packages(mirror="http://mirror.pkgbuild.com") -> PKGS:
     pkgs = {}
     with tempfile.TemporaryDirectory() as tmpdir:
         for repo in ("core", "extra", "community", "multilib"):
@@ -126,7 +129,7 @@ def get_packages(mirror="http://mirror.pkgbuild.com"):
     return pkgs
 
 
-def find_unneeded_orphans(pkgs, orphans):
+def find_unneeded_orphans(pkgs: PKGS, orphans: set[str]) -> set[str]:
     required = {
         dep
         for pkg in pkgs
@@ -137,7 +140,7 @@ def find_unneeded_orphans(pkgs, orphans):
     return orphans - required
 
 
-def what_requires(pkgs, pkgname):
+def what_requires(pkgs: PKGS, pkgname: str) -> set[str]:
     deptypes = ("depends", "makedepends", "checkdepends")
     required_by = set()
 
@@ -149,7 +152,7 @@ def what_requires(pkgs, pkgname):
     return required_by
 
 
-def get_maintainers(repo, arch, pkgname):
+def get_maintainers(repo: str, arch: str, pkgname: str) -> list[str]:
     url = f"https://archlinux.org/packages/{repo}/{arch}/{pkgname}/json/"
     response = requests.get(url)
     return response.json()["maintainers"]
