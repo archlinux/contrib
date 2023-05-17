@@ -330,7 +330,7 @@ function print-submodule-url {
     local _outfile="${3}"
     local _remote_prefix="$(git-remote-prefix "${_repo_url}")"
     local _srcline=""
-    verbose-echo
+
     if ! check-existence "${_mod_url}"; then
         _srcline="${_remote_prefix}$(get-repo-suffix-path "${_repo_url}" "${_mod_url}")"
     else
