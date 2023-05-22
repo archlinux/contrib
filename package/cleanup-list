@@ -12,6 +12,7 @@ import requests
 
 PKGS = dict[str, dict[str, str | set[str]]]
 
+
 def parse_desc(iofile: io.TextIOWrapper) -> dict[str, list[str]]:
     store = {}
     blockname = None
