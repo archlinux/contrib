@@ -10,8 +10,8 @@ fi
 
 PKGBASE=$1
 
-if [[ ! -d "$PKGBASE" || ! -d "$PKGBASE/trunk" ]]; then
-  echo "error: directory $1/{,trunk} does not exists"
+if [[ ! -d "$PKGBASE" ]]; then
+  echo "error: directory $1 does not exists"
   exit 1
 fi
 
@@ -28,7 +28,7 @@ REPONAME=$(basename "$PKGBASE")
 # The AUR does not support a main default branch, so we have to git init with a
 # master branch explictly https://bugs.archlinux.org/task/72163
 git init -b master $TMPDIR
-cp $PKGBASE/trunk/* $TMPDIR
+cp $PKGBASE/* $TMPDIR
 
 pushd $TMPDIR
 git remote add origin "ssh://aur@aur.archlinux.org/$REPONAME.git"
