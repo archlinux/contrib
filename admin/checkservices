@@ -298,7 +298,7 @@ main() {
     echo "Found: ${#broken_services[@]}"
     if (( ${#broken_services[@]} )); then
         display_restart "${broken_services[@]}"
-        if confirm 'Execute?'; then
+        if (( $RESTART )) && confirm 'Execute?'; then
             arrow 'Restart broken services'
             restart_services "${broken_services[@]}"
         fi
@@ -309,7 +309,7 @@ main() {
     echo "Found: ${#missing_services[@]}"
     if (( ${#missing_services[@]} )); then
         display_restart "${missing_services[@]}"
-        if confirm 'Execute?'; then
+        if (( $RESTART )) && confirm 'Execute?'; then
             arrow 'Restart missing services'
             restart_services "${missing_services[@]}"
         fi
