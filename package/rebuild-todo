@@ -36,11 +36,10 @@ usage() {
 		Repository Filters (default: $REPO)
 		    --core         Rebuild [core] packages
 		    --extra        Rebuild [extra] packages
-		    --community    Rebuild [community] packages
 		    --multilib     Rebuild [multilib] packages
 
 		Examples:
-		    Rebuilds all packages in [community] towards [community] ignoring "archlinux-contrib"
+		    Rebuilds all packages in [extra] towards [extra] ignoring "archlinux-contrib"
 		    $  ${PROGNAME} -i "archlinux-contrib" "https://archlinux.org/todo/some-todo-list/"
 
 		    Rebuilds all packages from [extra] towards [extra-testing]
@@ -63,13 +62,12 @@ NO_BUILD=0
 PACKAGES=0
 NO_PUBLISH=0
 EDIT_PKGBUILD=0
-COMMUNITY=1
 CONTINUE=0
 URL=""
-REPO="community"
+REPO="extra"
 BUILD="extra"
 message=""
-filter=("community")
+filter=("extra")
 maintainers=()
 packages=()
 ignore=()
@@ -119,28 +117,18 @@ while ((${#})); do
         ;;
         --core)
             PACKAGES=1
-            COMMUNITY=0
             BUILD="extra"
             REPO="core"
             filter=("extra")
         ;;
         --extra)
             PACKAGES=1
-            COMMUNITY=0
             BUILD="extra"
             REPO="extra"
             filter=("extra")
         ;;
-        --community)
-            PACKAGES=0
-            COMMUNITY=1
-            BUILD="extra"
-            REPO="community"
-            filter=("community")
-        ;;
         --multilib)
             PACKAGES=0
-            COMMUNITY=1
             REPO="multilib"
             BUILD="multilib"
             filter=("multilib")
@@ -235,10 +223,6 @@ printf '    %s\n' "${packages[@]}"
 printf "Confirm..."
 read <&1
 
-if ((COMMUNITY)); then
-    svn checkout -N svn+ssh://svn-community@repos.archlinux.org/srv/repos/svn-community/svn "$TMPDIR/community"
-    pushd "$TMPDIR/community" &>/dev/null
-fi
 if ((PACKAGES)); then
     svn checkout -N svn+ssh://svn-packages@repos.archlinux.org/srv/repos/svn-packages/svn "$TMPDIR/packages"
     pushd "$TMPDIR/packages" &>/dev/null
