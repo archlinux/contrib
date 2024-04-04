@@ -223,18 +223,10 @@ printf '    %s\n' "${packages[@]}"
 printf "Confirm..."
 read <&1
 
-if ((PACKAGES)); then
-    svn checkout -N svn+ssh://svn-packages@repos.archlinux.org/srv/repos/svn-packages/svn "$TMPDIR/packages"
-    pushd "$TMPDIR/packages" &>/dev/null
-fi
-svn update -- "${packages[@]}"
+pkgctl repo clone "${packages[@]}"
 
 for pkg in "${packages[@]}"; do
-    pushd "$pkg/trunk" &>/dev/null
-
-    if ! ((NO_BUMP)); then
-        bump_pkgrel
-    fi
+    pushd "$pkg" &>/dev/null
 
     # This should help us figure out if the package is already built
     readarray -t pkgs < <(makepkg --packagelist)
@@ -247,7 +239,7 @@ for pkg in "${packages[@]}"; do
         if ! ((NO_BUILD)); then
             SKIP_BUILD=0
             while true; do
-                if offload-build -r "$BUILD"; then
+		if pkgctl build --rebuild --staging; then
                     break
                 fi
                 echo "We failed to build! You are in a subshell to fix the build. Exit the shell to build again."
@@ -264,7 +256,7 @@ for pkg in "${packages[@]}"; do
             fi
         fi
         if ! ((NO_PUBLISH)); then
-            commitpkg "$REPO" "$message"
+		pkgctl release --db-update --staging -m "$message" 
         fi
     fi
     popd &>/dev/null
