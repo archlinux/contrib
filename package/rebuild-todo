@@ -32,6 +32,7 @@ usage() {
 		    --no-bump       Don't bump pkgrel before building (default bumps pkgrel)
 		    --testing       Publish towards testing
 		    --staging       Publish towards staging
+		    --skip-broken   Skip broken packages
 
 		Repository Filters (default: $REPO)
 		    --core         Rebuild [core] packages
@@ -63,6 +64,7 @@ PACKAGES=0
 NO_PUBLISH=0
 EDIT_PKGBUILD=0
 CONTINUE=0
+SKIP_BROKEN=0
 URL=""
 REPO="extra"
 BUILD="extra"
@@ -114,6 +116,9 @@ while ((${#})); do
         ;;
         --no-publish)
             NO_PUBLISH=1
+        ;;
+        --skip-broken)
+            SKIP_BROKEN=1
         ;;
         --core)
             PACKAGES=1
@@ -239,7 +244,11 @@ for pkg in "${packages[@]}"; do
         if ! ((NO_BUILD)); then
             SKIP_BUILD=0
             while true; do
-		if pkgctl build --rebuild --staging; then
+                if pkgctl build --rebuild --staging; then
+                    break
+                fi
+                if ((SKIP_BROKEN)); then
+                    SKIP_BUILD=1
                     break
                 fi
                 echo "We failed to build! You are in a subshell to fix the build. Exit the shell to build again."
@@ -256,7 +265,7 @@ for pkg in "${packages[@]}"; do
             fi
         fi
         if ! ((NO_PUBLISH)); then
-		pkgctl release --db-update --staging -m "$message" 
+            pkgctl release --db-update --staging -m "$message" 
         fi
     fi
     popd &>/dev/null
