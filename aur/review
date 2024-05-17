@@ -8,7 +8,13 @@
 # Default: fetches all packages and reviews them.
 
 fetch(){
-    pkgs=$(curl -s "https://aur.archlinux.org/rpc/?v=5&type=search&search_by=maintainer&arg=$1" | jq -r '.results[].PackageBase' | sort -u)
+    pkgs=$(curl -s "https://aur.archlinux.org/rpc/?v=5&type=search&by=maintainer&arg=$1" | jq -r '.results[].PackageBase' | sort -u)
+
+    if [[ -z ${pkgs} ]]; then
+        printf "no packages found for %s\n" "$1"
+        exit 1
+    fi
+
     for pkg in $pkgs; do
         printf "===> Downloading %s...\n" "$pkg"
         curl -s "https://aur.archlinux.org/cgit/aur.git/snapshot/$pkg.tar.gz" | tar xzm
@@ -25,8 +31,10 @@ review(){
     done
 }
 
-case "$@" in
-    fetch) shift; fetch "$@" ;;
-    review) shift; review "$@" ;;
-    *) shift; fetch "$@"; review "$@" ;;
-esac
+while (( $# )); do
+    case "$1" in
+        fetch) shift; fetch "$@" ; exit 0;;
+        review) shift; review "$@" ; exit 0;;
+        *) fetch "$@" && review "$@" ;;
+    esac
+done
