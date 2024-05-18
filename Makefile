@@ -7,7 +7,6 @@ TAG = $(shell git describe --abbrev=0 --tags)
 BASH_SCRIPTS = \
 	admin/checkservices \
 	aur/review	\
-	aur/repos2aur	\
 	package/parse-submodules \
 	package/pkgsearch \
 	package/rebuild-todo
