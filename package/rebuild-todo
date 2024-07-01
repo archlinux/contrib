@@ -46,7 +46,7 @@ usage() {
 		    Rebuilds all packages from [extra] towards [extra-testing]
 		    $  ${PROGNAME} --extra --testing "https://archlinux.org/todo/some-todo-list/"
 
-		    Rebuilds all packages from [core] towards [extra-testing]
+		    Rebuilds all packages from [core] towards [core-staging]
 		    $  ${PROGNAME} --core --staging -m "binutils rebuild" "https://archlinux.org/todo/some-todo-list/"
 
 		    Rebuilds all packages from stdin (from [core]) towards [staging]
