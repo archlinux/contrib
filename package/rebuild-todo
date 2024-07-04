@@ -34,7 +34,7 @@ usage() {
 		    --staging       Publish towards staging
 		    --skip-broken   Skip broken packages
 
-		Repository Filters (default: $REPO)
+		Repository Filters (default: $filter)
 		    --core         Rebuild [core] packages
 		    --extra        Rebuild [extra] packages
 		    --multilib     Rebuild [multilib] packages
@@ -56,8 +56,6 @@ _EOF_
 
 DRY=0
 STDIN=0
-STAGING=0
-TESTING=0
 NO_BUMP=0
 NO_BUILD=0
 PACKAGES=0
@@ -66,8 +64,7 @@ EDIT_PKGBUILD=0
 CONTINUE=0
 SKIP_BROKEN=0
 URL=""
-REPO="extra"
-BUILD="extra"
+REPO=""
 message=""
 filter=("extra")
 maintainers=()
@@ -105,11 +102,8 @@ while ((${#})); do
         -d|--dry-run)
             DRY=1
         ;;
-        --testing)
-            TESTING=1
-        ;;
-        --staging)
-            STAGING=1
+        --testing|--staging)
+            REPO="$key"
         ;;
         --no-build)
             NO_BUILD=1
@@ -122,20 +116,14 @@ while ((${#})); do
         ;;
         --core)
             PACKAGES=1
-            BUILD="extra"
-            REPO="core"
             filter=("extra")
         ;;
         --extra)
             PACKAGES=1
-            BUILD="extra"
-            REPO="extra"
             filter=("extra")
         ;;
         --multilib)
             PACKAGES=0
-            REPO="multilib"
-            BUILD="multilib"
             filter=("multilib")
         ;;
         *)
@@ -158,25 +146,6 @@ done
 
 TMPDIR=$(mktemp -d /var/tmp/contrib-rebuild.XXXX) || exit 1
 trap "rm -rf ${TMPDIR}" EXIT
-
-if ((STAGING)); then
-    if [[ $REPO == "multilib" ]]; then
-        REPO="multilib-staging"
-        BUILD="multilib-staging"
-    else
-        BUILD="staging"
-        REPO+="-staging"
-    fi
-fi
-if ((TESTING)); then
-    if [[ $REPO == "multilib" ]]; then
-        REPO="multilib-testing"
-        BUILD="multilib-testing"
-    else
-        BUILD="testing"
-        REPO+="-testing"
-    fi
-fi
 
 if [[ "$URL" != "" ]]; then
     while read -r json; do
@@ -214,8 +183,8 @@ if ((DRY)); then
     echo "Would rebuild the following packages:"
     printf '    %s\n' "${packages[@]}"
     echo "With:"
-    echo "    offload-build -r $BUILD"
-    echo "    commitpkg $REPO \"$message\""
+    echo "    pkgctl build --rebuild $REPO"
+    echo "    pkgctl release --db-update $REPO -m \"$message\""
     exit 0
 fi
 
@@ -244,7 +213,7 @@ for pkg in "${packages[@]}"; do
         if ! ((NO_BUILD)); then
             SKIP_BUILD=0
             while true; do
-                if pkgctl build --rebuild --staging; then
+                if pkgctl build --rebuild $REPO; then
                     break
                 fi
                 if ((SKIP_BROKEN)); then
@@ -265,7 +234,7 @@ for pkg in "${packages[@]}"; do
             fi
         fi
         if ! ((NO_PUBLISH)); then
-            pkgctl release --db-update --staging -m "$message" 
+            pkgctl release --db-update $REPO -m "$message"
         fi
     fi
     popd &>/dev/null
