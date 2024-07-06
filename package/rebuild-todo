@@ -70,7 +70,9 @@ filter=("extra")
 maintainers=()
 packages=()
 ignore=()
-
+skipped_packages=()
+rebuilt_packages=()
+released_packages=()
 
 if ! ((${#})); then
     usage
@@ -147,7 +149,17 @@ done
 TMPDIR=$(mktemp -d /var/tmp/contrib-rebuild.XXXX) || exit 1
 trap "rm -rf ${TMPDIR}" EXIT
 
+remove_from_rebuilt_packages_list() {
+    local element=$1
+    for i in "${!rebuilt_packages[@]}"; do
+        if [[ "${rebuilt_packages[i]}" == "$element" ]]; then
+            unset 'rebuilt_packages[i]'
+        fi
+    done
+}
+
 if [[ "$URL" != "" ]]; then
+    echo -e "Parsing packages list...\n"
     while read -r json; do
         readarray -t packages < <(jq --slurpfile repo <(printf '"%s" ' "${filter[@]}") \
                                      --slurpfile maint <(printf '"%s" ' "${maintainers[@]}") \
@@ -194,7 +206,7 @@ if ! ((${#packages[@]})); then
 fi
 echo "Rebuilding packages:"
 printf '    %s\n' "${packages[@]}"
-printf "Confirm..."
+printf "Press enter to confirm "
 read <&1
 
 pkgctl repo clone "${packages[@]}"
@@ -214,7 +226,10 @@ for pkg in "${packages[@]}"; do
             SKIP_BUILD=0
             while true; do
                 if pkgctl build --rebuild $REPO; then
+                    rebuilt_packages+=("$pkg")
                     break
+                else
+                    skipped_packages+=("$pkg")
                 fi
                 if ((SKIP_BROKEN)); then
                     SKIP_BUILD=1
@@ -234,8 +249,26 @@ for pkg in "${packages[@]}"; do
             fi
         fi
         if ! ((NO_PUBLISH)); then
-            pkgctl release --db-update $REPO -m "$message"
+            if pkgctl release --db-update $REPO -m "$message"; then
+                remove_from_rebuilt_packages_list "$pkg"
+                released_packages+=("$pkg")
+            fi
         fi
     fi
     popd &>/dev/null
 done
+
+if ((${#skipped_packages[@]})); then
+    echo -e "\nSkipped packages (failed to build):"
+    printf '    %s\n' "${skipped_packages[@]}"
+fi
+
+if ((${#rebuilt_packages[@]})); then
+    echo -e "\nRebuilt packages (but not released):"
+    printf '    %s\n' "${rebuilt_packages[@]}"
+fi
+
+if ((${#released_packages[@]})); then
+    echo -e "\nReleased packages:"
+    printf '    %s\n' "${released_packages[@]}"
+fi
