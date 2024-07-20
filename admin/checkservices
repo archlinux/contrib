@@ -55,6 +55,9 @@ STATUS=1            # display status after systemctl
 USER_SLICE=0        # act on users services
 MACHINE_SLICE=0     # act on machine services
 
+# ignored service list
+IGNORED_SERVICES=("getty@tty.*.service" "systemd-logind.service" "dbus-broker.service")
+
 # print $* as an arrow line
 arrow() {
     printf "${C_BOLD}${C_BLUE}:: ${C_RESET}${C_BOLD}%s${C_RESET}\n" "$*"
@@ -102,7 +105,7 @@ confirm() {
 
 # get running systemd services
 get_services() {
-    systemctl --no-legend --full --type service --state running | tr -d '●' | awk '{print $1}'
+    systemctl --no-legend --full --type service --state running | tr -d '●' | awk '{print $1}' | grep -v $(printf -- '-e %s ' "${IGNORED_SERVICES[@]}")
 }
 
 # get systemd services with updated mapped files
@@ -254,6 +257,7 @@ usage() {
     echo "  -u/-U: act (or not) on services in users slice (default: $USER_SLICE)" >&2
     echo "  -m/-M: act (or not) on services in machine slice (default: $MACHINE_SLICE)" >&2
     echo "  -z/-Z: serialize (or not) action (default: $SERIALIZE)" >&2
+    echo "  -i 'service_name'.service: ignore a specific service (can be used multiple times)" >&2
     exit 2
 }
 
@@ -261,7 +265,7 @@ usage() {
 # set options as global vars
 argparse() {
     local opt
-    while getopts 'AahFfLlPpRrSsUuZz' opt; do
+    while getopts 'AahFfLlPpRrSsUuZzi:' opt; do
         case $opt in
             A) AUTOCONFIRM=0;;      a) AUTOCONFIRM=1;;
             F) FAILED=0;;           f) FAILED=1;;
@@ -272,6 +276,12 @@ argparse() {
             U) USER_SLICE=0;;       u) USER_SLICE=1;;
             M) MACHINE_SLICE=0;;    m) MACHINE_SLICE=1;;
             Z) SERIALIZE=0;;        z) SERIALIZE=1;;
+	    i) if [[ "$OPTARG" == *.service ]]; then
+                    IGNORED_SERVICES+=("$OPTARG")
+	       else
+		    usage
+               fi
+               ;;
             *) usage;;
         esac
     done
