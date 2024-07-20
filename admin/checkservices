@@ -313,10 +313,14 @@ main() {
     local -a broken_services=($(get_broken_maps))
     echo "Found: ${#broken_services[@]}"
     if (( ${#broken_services[@]} )); then
-        display_restart "${broken_services[@]}"
-        if confirm 'Execute?'; then
-            arrow 'Restart broken services'
-            restart_services "${broken_services[@]}"
+        if (( RESTART )); then
+            display_restart "${broken_services[@]}"
+            if confirm 'Execute?'; then
+                arrow 'Restart broken services'
+                restart_services "${broken_services[@]}"
+            fi
+        else
+             display_restart "${broken_services[@]}" | sed "s/systemctl restart //g"
         fi
     fi
 
@@ -324,10 +328,14 @@ main() {
     local -a missing_services=($(get_missing_dbus))
     echo "Found: ${#missing_services[@]}"
     if (( ${#missing_services[@]} )); then
-        display_restart "${missing_services[@]}"
-        if confirm 'Execute?'; then
-            arrow 'Restart missing services'
-            restart_services "${missing_services[@]}"
+        if (( RESTART )); then
+            display_restart "${missing_services[@]}"
+            if confirm 'Execute?'; then
+                arrow 'Restart missing services'
+                restart_services "${missing_services[@]}"
+            fi
+        else
+            display_restart "${missing_services[@]}" | sed "s/systemctl restart //g"
         fi
     fi
 
