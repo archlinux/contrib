@@ -53,6 +53,7 @@ RESTART=1           # restart services
 SERIALIZE=0         # run in parallel
 STATUS=1            # display status after systemctl
 USER_SLICE=0        # act on users services
+MACHINE_SLICE=0     # act on machine services
 
 # print $* as an arrow line
 arrow() {
@@ -112,7 +113,10 @@ get_broken_maps() {
     for service in $(get_services); do
         unit_path="$(systemctl --property ControlGroup --value show "$service")"
         # hack to fix to systemd internal cgroup escaping on slice
-        unit_path="$(printf "$unit_path"|sed 's,\\x5c,\\,')"
+        unit_path="$(printf '%s' "$unit_path"|sed 's,\\x5c,\\,')"
+        # has Delegate Subgroup?
+        delegate_path="$(systemctl --property DelegateSubgroup --value show "$service")"
+        [[ -n ${delegate_path} ]] && unit_path="${unit_path}/${delegate_path}"
         # get the right pidfile name
         pidfile=''
         for path in "$SYSTEMD_CGROUP_BASE_PATH$unit_path/cgroup.procs" \
@@ -122,6 +126,7 @@ get_broken_maps() {
         [[ -z "$pidfile" ]] && error "Unable to find pid file for $service." && continue
         # skip non system units
         (( $USER_SLICE == 0 )) && [[ "$unit_path" =~ /user\.slice/ ]] && continue
+        (( $MACHINE_SLICE == 0 )) && [[ "$unit_path" =~ /machine\.slice/ ]] && continue
         # parse pidfile
         pids=( $(< "$pidfile") )
         if (( "${#pids[*]}" == 0 )); then
@@ -247,6 +252,7 @@ usage() {
     echo "  -r/-R: restart (or not) services with updated files (default: $RESTART)" >&2
     echo "  -s/-S: display (or not) status of restarted service (default: $STATUS)" >&2
     echo "  -u/-U: act (or not) on services in users slice (default: $USER_SLICE)" >&2
+    echo "  -m/-M: act (or not) on services in machine slice (default: $MACHINE_SLICE)" >&2
     echo "  -z/-Z: serialize (or not) action (default: $SERIALIZE)" >&2
     exit 2
 }
@@ -264,6 +270,7 @@ argparse() {
             R) RESTART=0;;          r) RESTART=1;;
             S) STATUS=0;;           s) STATUS=1;;
             U) USER_SLICE=0;;       u) USER_SLICE=1;;
+            M) MACHINE_SLICE=0;;    m) MACHINE_SLICE=1;;
             Z) SERIALIZE=0;;        z) SERIALIZE=1;;
             *) usage;;
         esac
