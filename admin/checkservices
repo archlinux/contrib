@@ -265,7 +265,7 @@ usage() {
 # set options as global vars
 argparse() {
     local opt
-    while getopts 'AahFfLlPpRrSsUuZzi:' opt; do
+    while getopts 'AahFfLlPpRrSsUuMmZzi:' opt; do
         case $opt in
             A) AUTOCONFIRM=0;;      a) AUTOCONFIRM=1;;
             F) FAILED=0;;           f) FAILED=1;;
