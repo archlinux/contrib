@@ -135,7 +135,7 @@ get_broken_maps() {
                 continue
             }
             # only file mapped as executable
-            deleted="$(grep -F '(deleted)' "$maps_path"|sed -nr 's|^\S+ ..x. \S+ \S+ \S+ \s+||p')"
+            deleted="$(grep -F '(deleted)' "$maps_path"|sed -nr 's|^\S+ ..x. \S+ \S+ \S+ \s+||p'|grep -v "/memfd:")"
             if [[ $deleted ]]; then
                 printf "%s\n" $service
                 break
