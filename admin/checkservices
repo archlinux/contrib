@@ -45,7 +45,6 @@ fi
 
 # default options
 AUTOCONFIRM=0       # autoconfirmation
-DBUS=1              # relauch when dbus
 FAILED=1            # display failed service at the end
 PACDIFF=1           # run pacdiff
 RELOAD=1            # reload systemd
@@ -56,7 +55,12 @@ USER_SLICE=0        # act on users services
 MACHINE_SLICE=0     # act on machine services
 
 # ignored service list
-IGNORED_SERVICES=("getty@tty.*.service" "systemd-logind.service" "dbus-broker.service")
+IGNORED_SERVICES=(
+    "getty@tty.*.service"
+    "systemd-logind.service"
+    "dbus-broker.service"
+    "auditd.service"
+)
 
 # print $* as an arrow line
 arrow() {
@@ -77,10 +81,10 @@ error() {
 # return : 0 - found
 #          1 - not found
 in_array() {
-    local needle=$1; shift
+    local needle="$1"; shift
     local item
     for item in "$@"; do
-       [[ $item = $needle ]] && return 0 # Found
+       [[ $item = "$needle" ]] && return 0 # Found
     done
     return 1 # Not Found
 }
@@ -88,10 +92,10 @@ in_array() {
 # ask for confirmation
 # return 0 when confirmed, otherwise 1
 confirm() {
-    (( $AUTOCONFIRM == 1 )) && return 0
+    (( AUTOCONFIRM == 1 )) && return 0
     local -i try
     local ans
-    for try in 5 4 3 2 1; do
+    for ((try=1; try<=5; try++)); do
         printf '%s [Yes|No] ' "$1"
         read -r ans || return 1
         case $ans in
@@ -105,7 +109,9 @@ confirm() {
 
 # get running systemd services
 get_services() {
-    systemctl --no-legend --full --type service --state running | tr -d '●' | awk '{print $1}' | grep -v $(printf -- '-e %s ' "${IGNORED_SERVICES[@]}")
+    local -a grep_patterns
+    read -r -a grep_patterns <<< "$(printf -- '-e %s ' "${IGNORED_SERVICES[@]}")"
+    systemctl --no-legend --full --type service --state running | tr -d '●' | awk '{print $1}' | grep -v "${grep_patterns[@]}"
 }
 
 # get systemd services with updated mapped files
@@ -128,10 +134,10 @@ get_broken_maps() {
         done
         [[ -z "$pidfile" ]] && error "Unable to find pid file for $service." && continue
         # skip non system units
-        (( $USER_SLICE == 0 )) && [[ "$unit_path" =~ /user\.slice/ ]] && continue
-        (( $MACHINE_SLICE == 0 )) && [[ "$unit_path" =~ /machine\.slice/ ]] && continue
+        (( USER_SLICE == 0 )) && [[ "$unit_path" =~ /user\.slice/ ]] && continue
+        (( MACHINE_SLICE == 0 )) && [[ "$unit_path" =~ /machine\.slice/ ]] && continue
         # parse pidfile
-        pids=( $(< "$pidfile") )
+        mapfile -t pids < "$pidfile"
         if (( "${#pids[*]}" == 0 )); then
             error "Unable to parse pid file for $service."
             continue
@@ -145,7 +151,7 @@ get_broken_maps() {
             # only file mapped as executable
             deleted="$(grep -F '(deleted)' "$maps_path"|sed -nr 's|^\S+ ..x. \S+ \S+ \S+ \s+||p'|grep -v "/memfd:")"
             if [[ $deleted ]]; then
-                printf "%s\n" $service
+                printf "%s\n" "$service"
                 break
             fi
         done
@@ -161,12 +167,13 @@ get_dbus_names() {
 # get systemd services not registered on dbus system bus
 get_missing_dbus() {
     local service busname
-    local -a registered=($(get_dbus_names))
+    local -a registered
+    mapfile -t registered < <(get_dbus_names)
     for service in $(get_services); do
         # get the service registered bus name
         busname="$(systemctl --property BusName --value show "$service")"
         if [[ "$busname" ]] && ! in_array "$busname" "${registered[@]}"; then
-            echo $service
+            echo "$service"
         fi
     done
 }
@@ -192,10 +199,10 @@ restart_services() {
     for service; do
         echo "systemctl restart $service"
         systemctl restart "$service" &
-        if (( $SERIALIZE )); then
+        if (( SERIALIZE )); then
             wait
             # display status directly when serialize and not quiet
-            (( $STATUS )) && systemctl --no-pager --lines=0 status "$service"
+            (( STATUS )) && systemctl --no-pager --lines=0 status "$service"
         else
             # register pids
             registered_pids[$!]="$service"
@@ -204,10 +211,10 @@ restart_services() {
 
     # display status as soon as available when not serialized
     while (( ${#registered_pids[*]} )); do
-        # wait for process at least one process to finish
+        # wait for at least one process to finish
         wait -n
 
-        running_pids=( $(jobs -p) )
+        mapfile -t running_pids < <(jobs -p)
 
         # count registered pid for loop protection
         last_registered_pids_count=${#registered_pids[*]}
@@ -215,14 +222,14 @@ restart_services() {
         for pid in "${!registered_pids[@]}"; do
             in_array "$pid" "${running_pids[@]}" && continue
             # show units status
-            (( $STATUS )) && systemctl --no-pager --lines=0 status "${registered_pids[$pid]}"
-            unset registered_pids[$pid]
+            (( STATUS )) && systemctl --no-pager --lines=0 status "${registered_pids[$pid]}"
+            unset "registered_pids[$pid]"
             break
         done
 
         # ensure we are not at 1st infinite loop
         # if we didn't remove a process something wrong happen
-        if (( $last_registered_pids_count == ${#registered_pids[*]} )); then
+        if (( last_registered_pids_count == ${#registered_pids[*]} )); then
             error "Unable to wait processes to finish"
             error "Registered PIDs: ${registered_pids[*]}"
             error "Running PIDs: ${running_pids[*]}"
@@ -276,10 +283,10 @@ argparse() {
             U) USER_SLICE=0;;       u) USER_SLICE=1;;
             M) MACHINE_SLICE=0;;    m) MACHINE_SLICE=1;;
             Z) SERIALIZE=0;;        z) SERIALIZE=1;;
-	    i) if [[ "$OPTARG" == *.service ]]; then
+            i) if [[ "$OPTARG" == *.service ]]; then
                     IGNORED_SERVICES+=("$OPTARG")
-	       else
-		    usage
+               else
+                    usage
                fi
                ;;
             *) usage;;
@@ -298,19 +305,20 @@ main() {
     argparse "$@"
 
     # from now, we need to be root
-    (( $UID != 0 )) && error 'You need to be root' && exit 1
+    (( UID != 0 )) && error 'You need to be root' && exit 1
 
     # call pacdiff to ensure config files are updated before restart
-    if (( $PACDIFF )); then
+    if (( PACDIFF )); then
         arrow 'Run pacdiff'
         pacdiff
     fi
 
     # ensure systemd has been reloaded or reexectued
-    (( $RELOAD )) && reload_systemd
+    (( RELOAD )) && reload_systemd
 
     arrow 'Services with broken maps files'
-    local -a broken_services=($(get_broken_maps))
+    local -a broken_services
+    mapfile -t broken_services < <(get_broken_maps)
     echo "Found: ${#broken_services[@]}"
     if (( ${#broken_services[@]} )); then
         if (( RESTART )); then
@@ -325,7 +333,8 @@ main() {
     fi
 
     arrow 'Services missing on the system bus'
-    local -a missing_services=($(get_missing_dbus))
+    local -a missing_services
+    mapfile -t missing_services < <(get_missing_dbus)
     echo "Found: ${#missing_services[@]}"
     if (( ${#missing_services[@]} )); then
         if (( RESTART )); then
@@ -340,7 +349,7 @@ main() {
     fi
 
     # list only failed systemd units
-    if (( $FAILED )); then
+    if (( FAILED )); then
         arrow "List failed units"
         systemctl --failed --all --no-pager --no-legend --full list-units
     fi
