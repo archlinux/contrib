@@ -56,7 +56,12 @@ USER_SLICE=0        # act on users services
 MACHINE_SLICE=0     # act on machine services
 
 # ignored service list
-IGNORED_SERVICES=("getty@tty.*.service" "systemd-logind.service" "dbus-broker.service")
+IGNORED_SERVICES=(
+    "getty@tty.*.service"
+    "systemd-logind.service"
+    "dbus-broker.service"
+    "auditd.service"
+)
 
 # print $* as an arrow line
 arrow() {
