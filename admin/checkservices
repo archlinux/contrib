@@ -137,7 +137,7 @@ get_broken_maps() {
         (( USER_SLICE == 0 )) && [[ "$unit_path" =~ /user\.slice/ ]] && continue
         (( MACHINE_SLICE == 0 )) && [[ "$unit_path" =~ /machine\.slice/ ]] && continue
         # parse pidfile
-        pids=( $(< "$pidfile") )
+        mapfile -t pids < "$pidfile"
         if (( "${#pids[*]}" == 0 )); then
             error "Unable to parse pid file for $service."
             continue
@@ -167,7 +167,8 @@ get_dbus_names() {
 # get systemd services not registered on dbus system bus
 get_missing_dbus() {
     local service busname
-    local -a registered=($(get_dbus_names))
+    local -a registered
+    mapfile -t registered < <(get_dbus_names)
     for service in $(get_services); do
         # get the service registered bus name
         busname="$(systemctl --property BusName --value show "$service")"
@@ -213,7 +214,7 @@ restart_services() {
         # wait for at least one process to finish
         wait -n
 
-        running_pids=( $(jobs -p) )
+        mapfile -t running_pids < <(jobs -p)
 
         # count registered pid for loop protection
         last_registered_pids_count=${#registered_pids[*]}
@@ -316,7 +317,8 @@ main() {
     (( RELOAD )) && reload_systemd
 
     arrow 'Services with broken maps files'
-    local -a broken_services=($(get_broken_maps))
+    local -a broken_services
+    mapfile -t broken_services < <(get_broken_maps)
     echo "Found: ${#broken_services[@]}"
     if (( ${#broken_services[@]} )); then
         if (( RESTART )); then
@@ -331,7 +333,8 @@ main() {
     fi
 
     arrow 'Services missing on the system bus'
-    local -a missing_services=($(get_missing_dbus))
+    local -a missing_services
+    mapfile -t missing_services < <(get_missing_dbus)
     echo "Found: ${#missing_services[@]}"
     if (( ${#missing_services[@]} )); then
         if (( RESTART )); then
