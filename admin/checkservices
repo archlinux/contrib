@@ -209,7 +209,7 @@ restart_services() {
 
     # display status as soon as available when not serialized
     while (( ${#registered_pids[*]} )); do
-        # wait for process at least one process to finish
+        # wait for at least one process to finish
         wait -n
 
         running_pids=( $(jobs -p) )
@@ -281,10 +281,10 @@ argparse() {
             U) USER_SLICE=0;;       u) USER_SLICE=1;;
             M) MACHINE_SLICE=0;;    m) MACHINE_SLICE=1;;
             Z) SERIALIZE=0;;        z) SERIALIZE=1;;
-	    i) if [[ "$OPTARG" == *.service ]]; then
+            i) if [[ "$OPTARG" == *.service ]]; then
                     IGNORED_SERVICES+=("$OPTARG")
-	       else
-		    usage
+               else
+                    usage
                fi
                ;;
             *) usage;;
