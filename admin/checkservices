@@ -81,10 +81,10 @@ error() {
 # return : 0 - found
 #          1 - not found
 in_array() {
-    local needle=$1; shift
+    local needle="$1"; shift
     local item
     for item in "$@"; do
-       [[ $item = $needle ]] && return 0 # Found
+       [[ $item = "$needle" ]] && return 0 # Found
     done
     return 1 # Not Found
 }
@@ -109,7 +109,9 @@ confirm() {
 
 # get running systemd services
 get_services() {
-    systemctl --no-legend --full --type service --state running | tr -d '●' | awk '{print $1}' | grep -v $(printf -- '-e %s ' "${IGNORED_SERVICES[@]}")
+    local -a grep_patterns
+    read -r -a grep_patterns <<< "$(printf -- '-e %s ' "${IGNORED_SERVICES[@]}")"
+    systemctl --no-legend --full --type service --state running | tr -d '●' | awk '{print $1}' | grep -v "${grep_patterns[@]}"
 }
 
 # get systemd services with updated mapped files
@@ -149,7 +151,7 @@ get_broken_maps() {
             # only file mapped as executable
             deleted="$(grep -F '(deleted)' "$maps_path"|sed -nr 's|^\S+ ..x. \S+ \S+ \S+ \s+||p'|grep -v "/memfd:")"
             if [[ $deleted ]]; then
-                printf "%s\n" $service
+                printf "%s\n" "$service"
                 break
             fi
         done
@@ -170,7 +172,7 @@ get_missing_dbus() {
         # get the service registered bus name
         busname="$(systemctl --property BusName --value show "$service")"
         if [[ "$busname" ]] && ! in_array "$busname" "${registered[@]}"; then
-            echo $service
+            echo "$service"
         fi
     done
 }
@@ -220,7 +222,7 @@ restart_services() {
             in_array "$pid" "${running_pids[@]}" && continue
             # show units status
             (( $STATUS )) && systemctl --no-pager --lines=0 status "${registered_pids[$pid]}"
-            unset registered_pids[$pid]
+            unset "registered_pids[$pid]"
             break
         done
 
