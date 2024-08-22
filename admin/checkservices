@@ -92,7 +92,7 @@ in_array() {
 # ask for confirmation
 # return 0 when confirmed, otherwise 1
 confirm() {
-    (( $AUTOCONFIRM == 1 )) && return 0
+    (( AUTOCONFIRM == 1 )) && return 0
     local -i try
     local ans
     for ((try=1; try<=5; try++)); do
@@ -134,8 +134,8 @@ get_broken_maps() {
         done
         [[ -z "$pidfile" ]] && error "Unable to find pid file for $service." && continue
         # skip non system units
-        (( $USER_SLICE == 0 )) && [[ "$unit_path" =~ /user\.slice/ ]] && continue
-        (( $MACHINE_SLICE == 0 )) && [[ "$unit_path" =~ /machine\.slice/ ]] && continue
+        (( USER_SLICE == 0 )) && [[ "$unit_path" =~ /user\.slice/ ]] && continue
+        (( MACHINE_SLICE == 0 )) && [[ "$unit_path" =~ /machine\.slice/ ]] && continue
         # parse pidfile
         pids=( $(< "$pidfile") )
         if (( "${#pids[*]}" == 0 )); then
@@ -198,10 +198,10 @@ restart_services() {
     for service; do
         echo "systemctl restart $service"
         systemctl restart "$service" &
-        if (( $SERIALIZE )); then
+        if (( SERIALIZE )); then
             wait
             # display status directly when serialize and not quiet
-            (( $STATUS )) && systemctl --no-pager --lines=0 status "$service"
+            (( STATUS )) && systemctl --no-pager --lines=0 status "$service"
         else
             # register pids
             registered_pids[$!]="$service"
@@ -221,14 +221,14 @@ restart_services() {
         for pid in "${!registered_pids[@]}"; do
             in_array "$pid" "${running_pids[@]}" && continue
             # show units status
-            (( $STATUS )) && systemctl --no-pager --lines=0 status "${registered_pids[$pid]}"
+            (( STATUS )) && systemctl --no-pager --lines=0 status "${registered_pids[$pid]}"
             unset "registered_pids[$pid]"
             break
         done
 
         # ensure we are not at 1st infinite loop
         # if we didn't remove a process something wrong happen
-        if (( $last_registered_pids_count == ${#registered_pids[*]} )); then
+        if (( last_registered_pids_count == ${#registered_pids[*]} )); then
             error "Unable to wait processes to finish"
             error "Registered PIDs: ${registered_pids[*]}"
             error "Running PIDs: ${running_pids[*]}"
@@ -304,16 +304,16 @@ main() {
     argparse "$@"
 
     # from now, we need to be root
-    (( $UID != 0 )) && error 'You need to be root' && exit 1
+    (( UID != 0 )) && error 'You need to be root' && exit 1
 
     # call pacdiff to ensure config files are updated before restart
-    if (( $PACDIFF )); then
+    if (( PACDIFF )); then
         arrow 'Run pacdiff'
         pacdiff
     fi
 
     # ensure systemd has been reloaded or reexectued
-    (( $RELOAD )) && reload_systemd
+    (( RELOAD )) && reload_systemd
 
     arrow 'Services with broken maps files'
     local -a broken_services=($(get_broken_maps))
@@ -346,7 +346,7 @@ main() {
     fi
 
     # list only failed systemd units
-    if (( $FAILED )); then
+    if (( FAILED )); then
         arrow "List failed units"
         systemctl --failed --all --no-pager --no-legend --full list-units
     fi
