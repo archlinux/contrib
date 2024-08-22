@@ -45,7 +45,6 @@ fi
 
 # default options
 AUTOCONFIRM=0       # autoconfirmation
-DBUS=1              # relauch when dbus
 FAILED=1            # display failed service at the end
 PACDIFF=1           # run pacdiff
 RELOAD=1            # reload systemd
