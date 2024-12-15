@@ -15,7 +15,8 @@ PYTHON_SCRIPTS = \
 	package/staging2testing \
 	security/security-tracker-check \
 	package/cleanup-list \
-	package/srcinfo-pkg-graph
+	package/srcinfo-pkg-graph \
+	package/check-pkg-urls
 
 SCRIPTS = \
 	$(BASH_SCRIPTS) $(PYTHON_SCRIPTS)
@@ -51,4 +52,4 @@ check-bash: $(BASH_SCRIPTS)
 	shellcheck $^
 
 check-python: $(PYTHON_SCRIPTS)
-	flake8 --ignore E123,E126,E128,E305,E501 $^
+	flake8 --ignore W503,E123,E126,E128,E305,E501 $^

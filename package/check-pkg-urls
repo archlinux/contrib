@@ -1,0 +1,255 @@
+#! /usr/bin/env python3
+
+# SPDX-License-Identifier: GPL-2.0
+
+"""
+The script checks if the URL field in all Arch Linux packages is valid, i.e.
+it leads to an existing website.
+
+First a list of all packages in the core, extra, and multilib repositories is
+obtained using `pyalpm`. Then all URLs are checked using `httpx` and the status
+is saved. There may be various errors, such as:
+
+- domain resolution error
+- SSL error (may be false-positive due to Python SSL package)
+- connection timeout or general connection error
+- HTTP status code (4xx, 5xx)
+
+Some cases are treated as indeterminate and not reported as errors. On the
+other hand, some of the reported errors may be false-positive even in cases
+that *should* indicate an error, e.g. some infamous web servers return 403 or
+404 status codes with valid content that is rendered or redirected elsewhere
+using JavaScript.
+
+Finally, a Markdown-formatted report is printed when all URLs are checked. Note
+that running the script may take a very long time (up to 2 hours for ~15k
+packages).
+
+Dependencies:
+
+- pyalpm
+- python-httpx
+- python-tqdm
+"""
+
+import datetime
+import logging
+import tempfile
+import ssl
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+
+import httpx
+import pycman
+import pyalpm
+import tqdm
+import tqdm.contrib.logging
+
+logger = logging.getLogger(__name__)
+
+PACCONF = """
+[options]
+RootDir     = /
+DBPath      = {pacdbpath}
+CacheDir    = {pacdbpath}
+LogFile     = {pacdbpath}
+# Use system GPGDir so that we don't have to populate it
+GPGDir      = /etc/pacman.d/gnupg/
+Architecture = {arch}
+
+[core]
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+Include = /etc/pacman.d/mirrorlist
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist
+"""
+
+
+def pacdb_init(config: str, dbpath: Path, arch: str):
+    """Initialize the pacman database and config"""
+    dbpath.mkdir(exist_ok=True)
+    confpath = dbpath / "pacman.conf"
+    if not confpath.is_file():
+        confpath.write_text(config.format(pacdbpath=dbpath, arch=arch))
+    return pycman.config.init_with_config(confpath)
+
+
+def pacdb_refresh(pacdb, force=False):
+    """Sync databases like pacman -Sy"""
+    try:
+        logger.info("Syncing pacman database...")
+        for db in pacdb.get_syncdbs():
+            # since this is private pacman database, there is no locking
+            db.update(force)
+    except pyalpm.error:
+        logger.exception("Failed to sync pacman database.")
+        raise
+
+
+def all_pkgs(pacdb):
+    """Generate all packages in all sync databses."""
+    for db in pacdb.get_syncdbs():
+        for pkg in db.pkgcache:
+            yield pkg
+
+
+# httpx client parameters
+limits = httpx.Limits(
+    max_connections=100,
+    max_keepalive_connections=None,  # always allow keep-alive
+    keepalive_expiry=60,
+)
+timeout = httpx.Timeout(
+    15, pool=None
+)  # disable timeout for waiting for a connection from the pool
+headers = {
+    # fake user agent to bypass servers responding differently or not at all to non-browser user agents
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; rv:128.0) Gecko/20100101 Firefox/128.0",
+}
+
+# create an SSL context allowing only TLS1.2 and newer (if supported by the used openssl version)
+ssl_context = httpx.create_ssl_context(ssl.PROTOCOL_TLS)
+ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+
+# initialize the HTTPX client
+transport = httpx.HTTPTransport(retries=3)
+client = httpx.Client(
+    transport=transport,
+    verify=ssl_context,
+    headers=headers,
+    timeout=timeout,
+    limits=limits,
+)
+
+
+# NOTE: this is basically copy-pasted from https://github.com/lahwaacz/wiki-scripts/blob/master/ws/checkers/ExtlinkStatusChecker.py
+@lru_cache(maxsize=1024)
+def check_url_sync(url: httpx.URL | str, *, follow_redirects=True):
+    if not isinstance(url, httpx.URL):
+        url = httpx.URL(url)
+
+    try:
+        # We need to use GET requests instead of HEAD, because many servers just return 404
+        # (or do not reply at all) to HEAD requests. Instead, we skip the downloading of the
+        # response body content by using ``stream`` interface.
+        with client.stream("GET", url, follow_redirects=follow_redirects) as response:
+            # nothing to do here, but using the context manager ensures that the response is
+            # always properly closed
+            pass
+    # FIXME: workaround for https://github.com/encode/httpx/discussions/2682#discussioncomment-5746317
+    except (httpx.ConnectError, ssl.SSLError) as e:
+        if isinstance(e, ssl.SSLError) or str(e).startswith("[SSL:"):
+            if "unable to get local issuer certificate" in str(e):
+                # FIXME: this is a problem of the SSL library used by Python
+                logger.warning(
+                    f"possible SSL error (unable to get local issuer certificate) for URL {url}"
+                )
+                return
+            else:
+                logger.error(f"SSL error ({e}) for URL {url}")
+                return False
+        if (
+            "no address associated with hostname" in str(e).lower()
+            or "name or service not known" in str(e).lower()
+        ):
+            logger.error(f"domain name could not be resolved for URL {url}")
+            return False
+        # other connection error - indeterminate
+        logger.warning(f"connection error for URL {url}")
+        return
+    except httpx.TooManyRedirects as e:
+        logger.error(f"TooManyRedirects error ({e}) for URL {url}")
+        return False
+    # it seems that httpx does not capture all exceptions, e.g. anyio.EndOfStream
+    # except httpx.RequestError as e:
+    except Exception as e:
+        # e.g. ReadTimeout has no message in the async version,
+        # see https://github.com/encode/httpx/discussions/2681
+        msg = str(e)
+        if not msg:
+            msg = type(e)
+        # base class exception - indeterminate
+        logger.error(f"URL {url} could not be checked due to {msg}")
+        return
+
+    logger.debug(f"status code {response.status_code} for URL {url}")
+    return response.status_code >= 200 and response.status_code < 300
+
+
+@dataclass
+class PackageUrlCheck:
+    pkgname: str
+    url: str
+    result: bool | None = None
+    timestamp: datetime.datetime | None = None
+
+
+def check_package_url(pkg_check: PackageUrlCheck, progress: tqdm.tqdm | None = None):
+    logger.info(f"Checking URL {pkg_check.url} ({pkg_check.pkgname})")
+
+    pkg_check.result = check_url_sync(pkg_check.url)
+    pkg_check.timestamp = datetime.datetime.now(datetime.UTC)
+
+    if progress is not None:
+        progress.update(1)
+
+
+def check(pkg_checks: [PackageUrlCheck]):
+    # initialize tqdm progressbar
+    with tqdm.tqdm(total=len(pkg_checks)) as progress:
+        # redirect logging to tqdm
+        with tqdm.contrib.logging.logging_redirect_tqdm():
+            # sort by URL to optimize for lru_cache
+            for pkg_check in sorted(pkg_checks, key=lambda x: x.url):
+                check_package_url(pkg_check, progress)
+
+
+def print_report(pkg_checks: [PackageUrlCheck]):
+    report = "# Package URL check report\n\n"
+
+    report += "## Packages with broken url (result=False)\n\n"
+    for pkg_check in pkg_checks:
+        if pkg_check.result is False and pkg_check.timestamp is not None:
+            report += f"- [ ] [{pkg_check.pkgname}](https://gitlab.archlinux.org/archlinux/packaging/packages/{pkg_check.pkgname}): {pkg_check.url}\n"
+
+    report += "## Packages with inconclusive check (result=None)\n\n"
+    for pkg_check in pkg_checks:
+        if pkg_check.result is None and pkg_check.timestamp is not None:
+            report += f"- [ ] [{pkg_check.pkgname}](https://gitlab.archlinux.org/archlinux/packaging/packages/{pkg_check.pkgname}): {pkg_check.url}\n"
+
+    print(report)
+
+
+def main(tmpdir: Path):
+    pacdb = pacdb_init(PACCONF, tmpdir, arch="x86_64")
+    pacdb_refresh(pacdb)
+
+    # get all packages
+    pkg_checks = [
+        PackageUrlCheck(pkgname=pkg.name, url=pkg.url) for pkg in all_pkgs(pacdb)
+    ]
+
+    try:
+        check(pkg_checks)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print_report(pkg_checks)
+
+
+if __name__ == "__main__":
+    formatter = logging.Formatter("{levelname:8} {message}", style="{")
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    logging.getLogger().addHandler(handler)
+    logging.getLogger().setLevel(logging.INFO)
+
+    logging.getLogger("httpcore").setLevel(logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARN)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        main(Path(tmpdir))
