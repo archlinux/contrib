@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0
+
+set -eou pipefail
+
+PROGNAME="${BASH_SOURCE[0]##*/}"
+
+usage() {
+    cat <<- _EOF_
+		Usage: ${PROGNAME} [OPTIONS] expression
+		
+		Does a full search on all files currently in the repository.
+		This is useful if one wants to search for a symbol instead of a soname.
+		For sonames please use 'sogrep'.
+		
+		OPTIONS
+		    -h, --help             Show this help text
+
+		Examples:
+		    $ ${PROGNAME} _ZN3fmt3v116detail10locale_refC1ISt6localeEERKT_
+_EOF_
+}
+
+if ! ((${#})); then
+    usage
+    exit 0
+fi
+
+SEARCH_EXPRESSION=""
+SEARCH_HOST="build.archlinux.org"
+
+while ((${#})); do
+    key="${1}"
+    case ${key} in
+        -h|--help)
+            usage
+            exit 0
+        ;;
+        --)
+            shift
+            break
+        ;;
+        -*)
+            echo "invalid argument: $key"
+            usage
+            exit 1
+        ;;
+        *)
+            SEARCH_EXPRESSION="${key}"
+        ;;
+    esac
+    shift
+done
+
+ssh "${SEARCH_HOST}" "parallel \"rg --files-with-matches --search-zip -- '${SEARCH_EXPRESSION}' {} && pacman -Qpq {}\" ::: /srv/ftp/pool/*/*.zst"
