@@ -27,7 +27,7 @@ usage() {
 		    -e, --edit      Edit PKGBUILD before building. Default when todo type is "Task"
 		    -o, --offload   Use offloaded builds
 		    -h, --help      Show this help text
-		    --dry-run       Show the offload-build and commitpkg being ran
+		    -d, --dry-run   Show the offload-build and commitpkg being ran
 		    --no-build      Don't build PKGBUILD
 		    --no-publish    Don't run commitpkg after building
 		    --no-bump       Don't bump pkgrel before building (default bumps pkgrel)
