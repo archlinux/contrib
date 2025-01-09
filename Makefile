@@ -9,7 +9,8 @@ BASH_SCRIPTS = \
 	aur/review	\
 	package/parse-submodules \
 	package/pkgsearch \
-	package/rebuild-todo
+	package/rebuild-todo \
+	package/pkggrep
 
 PYTHON_SCRIPTS = \
 	package/staging2testing \
