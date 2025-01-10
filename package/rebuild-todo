@@ -28,6 +28,7 @@ usage() {
 		    -o, --offload   Use offloaded builds
 		    -h, --help      Show this help text
 		    -d, --dry-run   Show the offload-build and commitpkg being ran
+		    --import-keys   Import PGP keys for packages source verification into the user's keyring
 		    --no-build      Don't build PKGBUILD
 		    --no-publish    Don't run commitpkg after building
 		    --no-bump       Don't bump pkgrel before building (default bumps pkgrel)
@@ -63,6 +64,7 @@ STDIN=0
 NO_BUMP=0
 NO_BUILD=0
 PACKAGES=0
+IMPORT_KEYS=0
 NO_PUBLISH=0
 EDIT_PKGBUILD=0
 CONTINUE=0
@@ -111,6 +113,9 @@ while ((${#})); do
         ;;
         -d|--dry-run)
             DRY=1
+        ;;
+        --import-keys)
+            IMPORT_KEYS=1
         ;;
         --testing|--staging)
             REPO="$key"
@@ -218,6 +223,22 @@ printf "Press enter to confirm "
 read <&1
 
 pkgctl repo clone "${packages[@]}"
+
+if ((IMPORT_KEYS)); then
+	echo "Importing PGP keys..."
+	# Only add paths that actually have key(s) to import and ignore paths that don't, don't exit on error
+	mapfile -d '' key_paths < <(find "${packages[@]/%//keys/pgp}" -type f -print0 2>/dev/null) || true
+
+	if ((${#key_paths[@]})); then
+		cat "${key_paths[@]}" | if [[ -z "$OFFLOAD" ]]; then
+			gpg --import
+		else
+			ssh build.archlinux.org gpg --import
+		fi
+	else
+		echo "No PGP key to import"
+	fi
+fi
 
 for pkg in "${packages[@]}"; do
     pushd "$pkg" &>/dev/null
