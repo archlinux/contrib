@@ -6,13 +6,6 @@ set -eou pipefail
 
 PROGNAME="${BASH_SOURCE[0]##*/}"
 
-bump_pkgrel() {
-    oldrel=$(grep 'pkgrel=' < <(svn cat PKGBUILD) | cut -d= -f2)
-    rel=${oldrel%%.*}
-    newrel=$((rel + 1))
-    sed -i "s/pkgrel=$oldrel/pkgrel=$newrel/" PKGBUILD
-}
-
 usage() {
     cat <<- _EOF_
 		Usage: ${PROGNAME} [OPTIONS] URL
@@ -31,7 +24,6 @@ usage() {
 		    --import-keys   Import PGP keys for packages source verification into the user's keyring
 		    --no-build      Don't build PKGBUILD
 		    --no-publish    Don't run commitpkg after building
-		    --no-bump       Don't bump pkgrel before building (default bumps pkgrel)
 		    --testing       Publish towards testing
 		    --staging       Publish towards staging
 		    --skip-broken   Skip broken packages
