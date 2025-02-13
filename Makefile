@@ -10,7 +10,8 @@ BASH_SCRIPTS = \
 	package/parse-submodules \
 	package/pkgsearch \
 	package/rebuild-todo \
-	package/pkggrep
+	package/pkggrep \
+	package/greposcope
 
 PYTHON_SCRIPTS = \
 	package/staging2testing \
