@@ -1,0 +1,92 @@
+#!/usr/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0
+
+# Dependencies:
+# rebuilderd-tools
+# parallel
+
+set -eou pipefail
+
+progname="greposcope"
+tmp_dir="${TMPDIR:-/tmp}/${progname}-${UID}"
+rebuilderd_host="https://reproducible.archlinux.org"
+extra_grep_opt=""
+pattern=""
+
+help() {
+	cat <<EOF
+Usage: ${progname} [OPTIONS] pattern
+
+Download and search for 'pattern' in diffoscope outputs of every unreproducible packages reported at ${rebuilderd_host}.
+This is useful to identify packages that are unreproducible because of a specific issue.
+
+OPTIONS
+    -h, --help            Show this message
+    -i, --ignore-case     Ignore case distinctions in patterns and input data
+
+Examples:
+    $ ${progname} "gzip compressed data"
+    $ ${progname} -i zipinfo
+EOF
+}
+
+while ((${#})); do
+	case "${1}" in
+		-h|--help)
+			help
+			exit 0
+		;;
+		-i|--ignore-case)
+			extra_grep_opt="--ignore-case"
+		;;
+		--)
+			shift
+			break
+		;;
+		-*)
+			echo -e >&2 "Invalid argument -- '${1}'\nTry '${progname} --help' for more information"
+			exit 1
+		;;
+		*)
+			pattern="${1}"
+		;;
+	esac
+	shift
+done
+
+if [ -z "${pattern}" ]; then
+    echo -e >&2 "No pattern provided\nTry '${progname} --help' for more information"
+    exit 1
+fi
+
+mkdir -p "${tmp_dir}"
+
+echo -e "==> Fetching the list of unreproducible packages...\n"
+mapfile -t pkg_list < <(rebuildctl -H "${rebuilderd_host}" pkgs ls --status BAD | awk '{print $3}')
+
+if ! (( ${#pkg_list[@]} )); then
+	echo "==> No unreproducible packages found"
+	exit 0
+fi
+
+updated_pkg_list=()
+for pkg in "${pkg_list[@]}"; do
+    if [ ! -f "${tmp_dir}/${pkg}.diffoscope" ]; then
+        updated_pkg_list+=("${pkg}")
+    fi
+done
+
+pkg_list=("${updated_pkg_list[@]}")
+
+if ! (( ${#pkg_list[@]} )); then
+	echo "==> All diffoscope outputs are already downloaded"
+else
+	echo -e "==> Downloading diffoscope outputs of ${#pkg_list[@]} unreproducible packages...\nThis may take some time...\n"
+	parallel --bar -j "$(nproc)" \
+		rebuildctl -H "${rebuilderd_host}" pkgs diffoscope --name {} "&>" "${tmp_dir}/{}.diffoscope" ::: "${pkg_list[@]}" || true
+fi
+
+echo -e "\n==> Searching for \"${pattern}\" in diffoscope outputs...\n"
+parallel --silent -j "$(nproc)" \
+	"grep --color=always --with-filename --line-number ${extra_grep_opt} '${pattern}' {}" ::: "${tmp_dir}"/*.diffoscope || true
