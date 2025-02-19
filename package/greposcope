@@ -22,12 +22,15 @@ Download and search for 'pattern' in diffoscope outputs of every unreproducible 
 This is useful to identify packages that are unreproducible because of a specific issue.
 
 OPTIONS
-    -h, --help            Show this message
-    -i, --ignore-case     Ignore case distinctions in patterns and input data
+    -h, --help                  Show this message
+    -i, --ignore-case           Ignore case distinctions in patterns and input data
+    -l, --files-with-matches    Only print the name of each file containing the pattern
 
 Examples:
     $ ${progname} "gzip compressed data"
     $ ${progname} -i zipinfo
+    $ ${progname} -l "max compression"
+    $ ${progname} -i -l gnu_build_id
 EOF
 }
 
@@ -38,7 +41,10 @@ while ((${#})); do
 			exit 0
 		;;
 		-i|--ignore-case)
-			extra_grep_opt="--ignore-case"
+			extra_grep_opt+=("--ignore-case")
+		;;
+		-l|--files-with-matches)
+			extra_grep_opt+=("--files-with-matches")
 		;;
 		--)
 			shift
@@ -89,4 +95,4 @@ fi
 
 echo -e "\n==> Searching for \"${pattern}\" in diffoscope outputs...\n"
 parallel --silent -j "$(nproc)" \
-	"grep --color=always --with-filename --line-number ${extra_grep_opt} '${pattern}' {}" ::: "${tmp_dir}"/*.diffoscope || true
+	"grep --color=always --with-filename --line-number ${extra_grep_opt[*]} '${pattern}' {}" ::: "${tmp_dir}"/*.diffoscope || true
