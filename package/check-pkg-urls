@@ -91,7 +91,7 @@ def pacdb_refresh(pacdb, force=False):
 
 
 def all_pkgs(pacdb):
-    """Generate all packages in all sync databses."""
+    """Generate all packages in all sync databases."""
     for db in pacdb.get_syncdbs():
         for pkg in db.pkgcache:
             yield pkg

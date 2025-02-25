@@ -125,7 +125,7 @@ for pkgbase, deps in PKG_DEPS.items():
         if dep_op:
             dep_pkgname, dep_pkgver = dep.split(dep_op)
 
-        # We only care about packages whoes .SRCINFO we have read
+        # We only care about packages whose .SRCINFO we have read
         if dep_pkgname not in PKG_DEPS.keys():
             continue
 
