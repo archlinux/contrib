@@ -253,17 +253,18 @@ reload_systemd() {
 usage() {
     echo "usage ${0##*/} [options]"
     echo "description: check for updated files in a service"
+    echo "For toggle options: lowercase enables (1), uppercase disables (0)"
     echo 'options:'
     echo '  -h: this help' >&2
-    echo "  -a/-A: auto confirmation (or not) (default: $AUTOCONFIRM)" >&2
-    echo "  -l/-L: call (or not) systemd daemon-(reload|reexec) (default: $RELOAD)" >&2
-    echo "  -f/-F: display (or not) failed services before quit (default: $FAILED)" >&2
-    echo "  -p/-P: call (or not) pacdiff before act (default: $PACDIFF)" >&2
-    echo "  -r/-R: restart (or not) services with updated files (default: $RESTART)" >&2
-    echo "  -s/-S: display (or not) status of restarted service (default: $STATUS)" >&2
-    echo "  -u/-U: act (or not) on services in users slice (default: $USER_SLICE)" >&2
-    echo "  -m/-M: act (or not) on services in machine slice (default: $MACHINE_SLICE)" >&2
-    echo "  -z/-Z: serialize (or not) action (default: $SERIALIZE)" >&2
+    echo "  -a/-A: auto confirmation (default: -A / $AUTOCONFIRM)" >&2
+    echo "  -l/-L: call systemd daemon-(reload|reexec) (default: -l / $RELOAD)" >&2
+    echo "  -f/-F: display failed services before quit (default: -f / $FAILED)" >&2
+    echo "  -p/-P: call pacdiff before act (default: -p / $PACDIFF)" >&2
+    echo "  -r/-R: restart services with updated files (default: -r / $RESTART)" >&2
+    echo "  -s/-S: display status of restarted service (default: -s / $STATUS)" >&2
+    echo "  -u/-U: act on services in users slice (default: -U / $USER_SLICE)" >&2
+    echo "  -m/-M: act on services in machine slice (default: -M / $MACHINE_SLICE)" >&2
+    echo "  -z/-Z: serialize action (default: -Z / $SERIALIZE)" >&2
     echo "  -i 'service_name'.service: ignore a specific service (can be used multiple times)" >&2
     exit 2
 }
