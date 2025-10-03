@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+set -eou pipefail
+
+PROGNAME="${BASH_SOURCE[0]##*/}"
+
+usage() {
+    cat <<- _EOF_
+		Usage: ${PROGNAME} [OPTIONS] [KEY-ID]
+		
+		Does a search on all signatures files currently in the repository and
+		prints the packages files for if the signature was done by <KEY-ID>.
+
+		Requires GNU Parallel, awk, bsdtar and Sequoia's sq on the remote host.
+
+		
+		OPTIONS
+		    -h, --help             Show this help text
+		    -o, --output-format    Set the output format
+                                   Possible values include 'filename' and 'packagename' (default).
+
+		Examples:
+		    Get all packagefiles signed by given key
+		    $ ${PROGNAME} F00B96D15228013FFC9C9D0393B11DAA4C197E3D
+		
+		    Get a rebuild list for all packages signed by given key
+		    $ ${PROGNAME} --output-format packagename F00B96D15228013FFC9C9D0393B11DAA4C197E3D | xargs expac -S "%e" | sort --unique
+_EOF_
+}
+
+in_array() {
+	local needle=$1; shift
+	local item
+	for item in "$@"; do
+		[[ $item = "$needle" ]] && return 0 # Found
+	done
+	return 1 # Not Found
+}
+
+KEY_ID=""
+SEARCH_HOST="build.archlinux.org"
+OUTPUT_FORMAT="filename"
+VALID_OUTPUT_FORMATS=(
+    'filename'
+    'packagename'
+)
+
+while ((${#})); do
+    key="${1}"
+    case ${key} in
+        -h|--help)
+            usage
+            exit 0
+        ;;
+        -o|--output-format)
+            format="$2"
+            (( $# <= 1 )) && echo "missing argument for ${key}" && exit 1
+
+            if ! in_array "${format}" "${VALID_OUTPUT_FORMATS[@]}"; then
+                echo "Unknown output format: ${format}"
+                exit 1
+            fi
+            shift 1
+            OUTPUT_FORMAT="${format}"
+        ;;
+        --)
+            shift
+            break
+        ;;
+        -*)
+            echo "invalid argument: $key"
+            usage
+            exit 1
+        ;;
+        *)
+            KEY_ID="${key}"
+        ;;
+    esac
+    shift
+done
+
+parallel_common_command=(
+    # extract signature information
+    "sq --home none --cert-store none inspect {} | "
+    # Get the key id
+    "awk '/Alleged signer:/{getline; print}' | "
+    # strip all whitespace
+    "xargs | "
+    # check for keyid and discard output
+    "grep --quiet -- '${KEY_ID}'"
+)
+
+case $OUTPUT_FORMAT in
+    filename)
+        # shellcheck disable=SC2029
+        ssh "${SEARCH_HOST}" "parallel \"${parallel_common_command[*]} && echo {/.}\" ::: /srv/ftp/pool/packages/*.pkg.tar.*.sig"
+    ;;
+    packagename)
+        # shellcheck disable=SC2016 # $3 is to be used by awk and not bash
+        awk_search='/pkgname/ { print \$3 }'
+
+        # shellcheck disable=SC2029
+        ssh "${SEARCH_HOST}" "parallel \"${parallel_common_command[*]} && bsdtar xfO {.} .BUILDINFO | awk '${awk_search}'\" ::: /srv/ftp/pool/packages/*.pkg.tar.*.sig"
+    ;;
+esac

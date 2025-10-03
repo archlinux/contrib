@@ -8,6 +8,7 @@ BASH_SCRIPTS = \
 	admin/checkservices \
 	aur/review \
 	package/greposcope \
+	package/packages-signed-by \
 	package/parse-submodules \
 	package/pkggrep \
 	package/pkgsearch \
