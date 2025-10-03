@@ -6,19 +6,19 @@ TAG = $(shell git describe --abbrev=0 --tags)
 
 BASH_SCRIPTS = \
 	admin/checkservices \
-	aur/review	\
+	aur/review \
+	package/greposcope \
 	package/parse-submodules \
-	package/pkgsearch \
-	package/rebuild-todo \
 	package/pkggrep \
-	package/greposcope
+	package/pkgsearch \
+	package/rebuild-todo
 
 PYTHON_SCRIPTS = \
-	package/staging2testing \
-	security/security-tracker-check \
+	package/check-pkg-urls \
 	package/cleanup-list \
 	package/srcinfo-pkg-graph \
-	package/check-pkg-urls
+	package/staging2testing \
+	security/security-tracker-check
 
 SCRIPTS = \
 	$(BASH_SCRIPTS) $(PYTHON_SCRIPTS)
