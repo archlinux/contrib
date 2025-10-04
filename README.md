@@ -7,9 +7,14 @@ years so they can be curated, cleaned up and maybe become part of the `devtools`
 package.
 
 ### Contribution guidelines
+
 - Some documentation is needed. This can be comments in the top of the file or
   a traditional help command.
 
 - One ACK for each Pull-Request is needed
 
 - Please add [SPDX license header](https://spdx.org/ids-how)
+
+### Release process
+
+Run `make release` to push a signed git tag and create a release with default changelog (requires `gh`).
