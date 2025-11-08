@@ -47,6 +47,7 @@ fi
 AUTOCONFIRM=0       # autoconfirmation
 FAILED=1            # display failed service at the end
 PACDIFF=1           # run pacdiff
+THREEWAY=0          # run pacdiff with --threeway
 RELOAD=1            # reload systemd
 RESTART=1           # restart services
 SERIALIZE=0         # run in parallel
@@ -260,6 +261,7 @@ usage() {
     echo "  -l/-L: call systemd daemon-(reload|reexec) (default: -l / $RELOAD)" >&2
     echo "  -f/-F: display failed services before quit (default: -f / $FAILED)" >&2
     echo "  -p/-P: call pacdiff before act (default: -p / $PACDIFF)" >&2
+    echo "  -t/-T: view diffs in 3-way fashion with pacdiff (default: -T / $THREEWAY)" >&2
     echo "  -r/-R: restart services with updated files (default: -r / $RESTART)" >&2
     echo "  -s/-S: display status of restarted service (default: -s / $STATUS)" >&2
     echo "  -u/-U: act on services in users slice (default: -U / $USER_SLICE)" >&2
@@ -273,7 +275,7 @@ usage() {
 # set options as global vars
 argparse() {
     local opt
-    while getopts 'AahFfLlPpRrSsUuMmZzi:' opt; do
+    while getopts 'AahFfLlPpRrSsTtUuMmZzi:' opt; do
         case $opt in
             A) AUTOCONFIRM=0;;      a) AUTOCONFIRM=1;;
             F) FAILED=0;;           f) FAILED=1;;
@@ -281,6 +283,7 @@ argparse() {
             P) PACDIFF=0;;          p) PACDIFF=1;;
             R) RESTART=0;;          r) RESTART=1;;
             S) STATUS=0;;           s) STATUS=1;;
+            T) THREEWAY=0;;         t) THREEWAY=1;;
             U) USER_SLICE=0;;       u) USER_SLICE=1;;
             M) MACHINE_SLICE=0;;    m) MACHINE_SLICE=1;;
             Z) SERIALIZE=0;;        z) SERIALIZE=1;;
@@ -308,10 +311,19 @@ main() {
     # from now, we need to be root
     (( UID != 0 )) && error 'You need to be root' && exit 1
 
-    # call pacdiff to ensure config files are updated before restart
+    # call pacdiff unless explicitly disabled to ensure config files are updated before restart
     if (( PACDIFF )); then
         arrow 'Run pacdiff'
-        pacdiff
+        if command -v pacdiff &> /dev/null ; then
+            arrow 'Run pacdiff'
+	    if (( THREEWAY )); then
+	    	pacdiff --threeway
+	    else
+	    	pacdiff
+	    fi
+        else
+            warn 'skipping pacdiff as not installed'
+        fi
     fi
 
     # ensure systemd has been reloaded or reexectued
@@ -355,12 +367,6 @@ main() {
         systemctl --failed --all --no-pager --no-legend --full list-units
     fi
 }
-
-# disable pacdiff by default if not installed
-if  ! command -v pacdiff &> /dev/null ; then
-    warn 'skipping pacdiff as not installed'
-    PACDIFF=0
-fi
 
 main "$@"
 
