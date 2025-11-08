@@ -308,10 +308,14 @@ main() {
     # from now, we need to be root
     (( UID != 0 )) && error 'You need to be root' && exit 1
 
-    # call pacdiff to ensure config files are updated before restart
+    # call pacdiff unless explicitly disabled to ensure config files are updated before restart
     if (( PACDIFF )); then
-        arrow 'Run pacdiff'
-        pacdiff
+        if  command -v pacdiff &> /dev/null ; then
+            arrow 'Run pacdiff'
+            pacdiff
+        else
+            warn 'skipping pacdiff as not installed'
+        fi
     fi
 
     # ensure systemd has been reloaded or reexectued
@@ -355,12 +359,6 @@ main() {
         systemctl --failed --all --no-pager --no-legend --full list-units
     fi
 }
-
-# disable pacdiff by default if not installed
-if  ! command -v pacdiff &> /dev/null ; then
-    warn 'skipping pacdiff as not installed'
-    PACDIFF=0
-fi
 
 main "$@"
 
