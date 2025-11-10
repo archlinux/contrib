@@ -37,7 +37,7 @@ uninstall:
 
 .PHONY: release
 release:
-	git describe --exact-match >/dev/null 2>&1 && { echo "Last commit is already tagged" >&2; exit 1; }
+	git describe --exact-match >/dev/null 2>&1 && { echo "Last commit is already tagged" >&2; exit 1; } || true
 	git tag -s $(shell date +%Y%m%d)
 	git push --tags
 	gh release create --generate-notes $(shell date +%Y%m%d)
