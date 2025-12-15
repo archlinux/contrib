@@ -23,6 +23,7 @@ usage() {
 		    -d, --dry-run   Show the offload-build and commitpkg being ran
 		    --import-keys   Import PGP keys for packages source verification into the user's keyring
 		    --no-build      Don't build PKGBUILD
+		    --nocheck       Don't run the check() function in the PKGBUILD
 		    --no-publish    Don't run commitpkg after building
 		    --testing       Publish towards testing
 		    --staging       Publish towards staging
@@ -63,6 +64,7 @@ CONTINUE=0
 SKIP_BROKEN=0
 URL=""
 OFFLOAD=""
+NOCHECK=""
 REPO=""
 message=""
 filter=("extra")
@@ -114,6 +116,9 @@ while ((${#})); do
         ;;
         --no-build)
             NO_BUILD=1
+        ;;
+        --nocheck)
+            NOCHECK="$key"
         ;;
         --no-publish)
             NO_PUBLISH=1
@@ -200,7 +205,7 @@ if ((DRY)); then
     echo "Would rebuild the following packages:"
     printf '    %s\n' "${packages[@]}"
     echo "With:"
-    echo "    pkgctl build --rebuild $REPO $OFFLOAD"
+    echo "    pkgctl build --rebuild $REPO $OFFLOAD $NOCHECK"
     echo "    pkgctl release --db-update $REPO -m \"$message\""
     exit 0
 fi
@@ -246,7 +251,7 @@ for pkg in "${packages[@]}"; do
         if ! ((NO_BUILD)); then
             SKIP_BUILD=0
             while true; do
-                if pkgctl build --rebuild $REPO $OFFLOAD; then
+                if pkgctl build --rebuild $REPO $OFFLOAD $NOCHECK; then
                     rebuilt_packages+=("$pkg")
                     break
                 else
