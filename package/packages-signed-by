@@ -92,16 +92,38 @@ parallel_common_command=(
     "grep --quiet -- '${KEY_ID}'"
 )
 
-case $OUTPUT_FORMAT in
-    filename)
-        # shellcheck disable=SC2029
-        ssh "${SEARCH_HOST}" "parallel \"${parallel_common_command[*]} && echo {/.}\" ::: /srv/ftp/pool/packages/*.pkg.tar.*.sig"
-    ;;
-    packagename)
-        # shellcheck disable=SC2016 # $3 is to be used by awk and not bash
-        awk_search='/pkgname/ { print \$3 }'
+REPOSITORIES=(
+    core
+    core-testing
+    core-staging
+    extra
+    extra-testing
+    extra-staging
+    multilib
+    multilib-testing
+    multilib-staging
+    gnome-unstable
+    kde-unstable
+)
+ARCHITECTURES=(
+    x86_64
+)
 
-        # shellcheck disable=SC2029
-        ssh "${SEARCH_HOST}" "parallel \"${parallel_common_command[*]} && bsdtar xfO {.} .BUILDINFO | awk '${awk_search}'\" ::: /srv/ftp/pool/packages/*.pkg.tar.*.sig"
-    ;;
-esac
+for arch in "${ARCHITECTURES[@]}"; do
+    for repo in "${REPOSITORIES[@]}"; do
+        case $OUTPUT_FORMAT in
+            filename)
+                # shellcheck disable=SC2029
+                ssh "${SEARCH_HOST}" "parallel \"${parallel_common_command[*]} && echo {/.}\" ::: /srv/ftp/${repo}/os/${arch}/*.pkg.tar.*.sig"
+            ;;
+            packagename)
+                # shellcheck disable=SC2016 # $3 is to be used by awk and not bash
+                awk_search='/pkgname/ { print \$3 }'
+
+                # shellcheck disable=SC2029
+                ssh "${SEARCH_HOST}" "parallel \"${parallel_common_command[*]} && bsdtar xfO {.} .BUILDINFO | awk '${awk_search}'\" ::: /srv/ftp/${repo}/os/${arch}/*.pkg.tar.*.sig"
+            ;;
+        esac
+    done
+done
+
