@@ -16,7 +16,7 @@ Flags:
     -q                  local packages
     -s                  print the package maintainers
     -l [limit]          co-maintainer limit to filter on default: 1
-    -f [repository]     filter on repository, Default: core extra multilib community
+    -f [repository]     filter on repository, Default: core extra multilib
     -o                  list flagged packages
     -n                  use pkgname instead of pkgbase (not recommended as we sort away split pkgs)
     -h                  help messages
@@ -31,8 +31,8 @@ Example:
     Packages installed on the system from [core] with 1 maintainer
     $ pkgsearch -q -f core -l 1
 
-    Locally installed packages from [community], orphaned, and flagged out-of-date 
-    $ pkgsearch -q -f community -l 0 -m orphan -o
+    Locally installed packages from [extra], orphaned, and flagged out-of-date
+    $ pkgsearch -q -f extra -l 0 -m orphan -o
 
 EOF
 }
@@ -61,13 +61,13 @@ while true; do
 done
 
 find_packages(){
-    test ${#filter} -eq 0 && filter=(core extra community multilib)
+    test ${#filter} -eq 0 && filter=(core extra multilib)
     if ((local_packages)); then
         # shellcheck disable=SC2046
         expac -S "%r %a %n %e" $(expac %n) | grep -P "^($(tr ' ' '|' <<< "${filter[*]}")) "
     else
         filter=("${filter[@]^}") # Uppercase the repo names
-        filter=("${filter[@]/#/&repo=}") # Prepend &repo= to all elements
+        filter=("${filter[@]/#/\&repo=}") # Prepend &repo= to all elements
         query="?${maintainer_query}${packager_query}$(printf "%s" "${filter[@]}")&flagged=$out_of_date"
         curl -s "https://archlinux.org/packages/search/json/$query" \
           | jq -r '.results[] | "\(.repo) \(.arch) \(.pkgname) \(.pkgbase)"' | sort | uniq
