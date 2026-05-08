@@ -100,7 +100,7 @@ def parse_repo(dbpath: str) -> PKGS:
 
 def get_orphans() -> set[str]:
     base_url = "https://archlinux.org/packages/search/json/?maintainer=orphan"
-    query = "repo=Community&repo=Core&repo=Extra&repo=Multilib"
+    query = "repo=Core&repo=Extra&repo=Multilib"
     response = requests.get(f"{base_url}&{query}").json()
     num_pages = response["num_pages"]
 
@@ -117,7 +117,7 @@ def get_orphans() -> set[str]:
 def get_packages(mirror="http://mirror.pkgbuild.com") -> PKGS:
     pkgs = {}
     with tempfile.TemporaryDirectory() as tmpdir:
-        for repo in ("core", "extra", "community", "multilib"):
+        for repo in ("core", "extra", "multilib"):
             url = f"{mirror}/{repo}/os/x86_64/{repo}.db"
             response = requests.get(url)
 

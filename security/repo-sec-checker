@@ -24,7 +24,7 @@ from tabulate import tabulate
 ARCHS = ['x86_64']
 PKG_EXT = '.tar.zst'
 DEFAULT_SOURCE_DIR = '/srv/ftp'
-SOURCE_WHITELIST = ['core', 'extra', 'community', 'multilib']
+SOURCE_WHITELIST = ['core', 'extra', 'multilib']
 
 # FORTIFY_SOURCE checklist
 UNSAFE_FUNCTIONS = set([
