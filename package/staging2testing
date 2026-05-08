@@ -12,7 +12,6 @@ CMD = './db-move {} {} {}'
 
 def main(url):
     pkgs = set()
-    communitypkgs = set()
     multilibpkgs = set()
 
     try:
@@ -24,17 +23,13 @@ def main(url):
     for pkg in r.json()['packages']:
         pkgbase = pkg['pkgbase']
 
-        if pkg['repo'] == 'community':
-            communitypkgs.add(pkgbase)
-        elif pkg['repo'] == 'multilib':
+        if pkg['repo'] == 'multilib':
             multilibpkgs.add(pkgbase)
         else:
             pkgs.add(pkgbase)
 
     if pkgs:
         print(CMD.format('staging', 'testing', ' '.join(pkgs)))
-    if communitypkgs:
-        print(CMD.format('community-staging', 'community-testing', ' '.join(communitypkgs)))
     if multilibpkgs:
         print(CMD.format('multilib-staging', 'multilib-testing', ' '.join(multilibpkgs)))
 
