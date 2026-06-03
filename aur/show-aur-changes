@@ -1,0 +1,125 @@
+#!/usr/bin/bash
+
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+AUR_REPO_URL="https://github.com/archlinux/aur"
+
+set -euo pipefail
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [-d|--diff] [-f|--fetch] [-n|--days <n>] [-m|--meta <path>] [-p|--pattern <glob>] [-r|--repo <path>] [--clone <path>]
+
+Find AUR packages modified within a time window whose branches contain changes
+to files matching a given glob pattern.
+
+Options:
+  -d, --diff            Print the effective diff for each matched package
+  -f, --fetch           Sync the local mirror and metadata to the latest state before running
+  -n, --days <n>        Look-back window in days (default: 7)
+  -m, --meta <path>     Path to packages-meta-v1.json (default: packages-meta-v1.json in the aur repo root)
+  -p, --pattern <glob>  File pattern to inspect (default: *)
+  -r, --repo <path>     Path to the AUR git checkout (default: git repo of current directory)
+      --clone <path>    Clone the AUR mono repository to <path> and use it as the repo
+  -h, --help            Show this help text
+
+Examples:
+  $(basename "$0") --repo ~/Documents/shared_projects/aur --fetch --diff --days 1
+EOF
+}
+
+SHOW_DIFF=0
+FETCH=0
+DAYS=7
+META_JSON=""
+PATTERN="*"
+REPO_ROOT=""
+CLONE_PATH=""
+while [[ "${1:-}" == -* ]]; do
+  case "$1" in
+    -d|--diff)    SHOW_DIFF=1 ;;
+    -f|--fetch)   FETCH=1 ;;
+    -n|--days)    shift; DAYS="$1" ;;
+    -m|--meta)    shift; META_JSON="$1" ;;
+    -p|--pattern) shift; PATTERN="$1" ;;
+    -r|--repo)    shift; REPO_ROOT="$1" ;;
+    --clone)      shift; CLONE_PATH="$1" ;;
+    -h|--help)    usage; exit 0 ;;
+    *) echo "Unknown flag: $1" >&2; echo >&2; usage >&2; exit 1 ;;
+  esac
+  shift
+done
+
+if [[ -n "$CLONE_PATH" ]]; then
+  echo "Cloning AUR mono repository to $CLONE_PATH ..." >&2
+  git clone "$AUR_REPO_URL" "$CLONE_PATH"
+  REPO_ROOT="$CLONE_PATH"
+fi
+
+REPO_ROOT="${REPO_ROOT:-"$(git rev-parse --show-toplevel)"}"
+META_JSON="${META_JSON:-"$REPO_ROOT/packages-meta-v1.json"}"
+
+if (( FETCH )); then
+  echo "Updating git mirror ..." >&2
+  git -C "$REPO_ROOT" fetch --all --prune
+  echo "Fetching latest metadata from aur.archlinux.org ..." >&2
+  curl -fsSL "https://aur.archlinux.org/packages-meta-v1.json.gz" \
+    | gzip -d > "$META_JSON"
+  echo "Saved to $META_JSON" >&2
+fi
+
+if [[ ! -f "$META_JSON" ]]; then
+  echo "error: metadata file not found: $META_JSON" >&2
+  echo "hint: run with --fetch to download it" >&2
+  exit 1
+fi
+
+# Compute the cutoff as unix timestamp
+CUTOFF=$(date -d "-${DAYS} days" +%s)
+
+# Collect the unique PackageBases modified since CUTOFF
+mapfile -t PKGS < <(
+  jq -r --argjson cutoff "$CUTOFF" \
+    '[.[] | select(.LastModified >= $cutoff)] | map(.PackageBase) | unique | .[]' \
+    "$META_JSON"
+)
+
+echo "Packages modified in the last ${DAYS} day(s): ${#PKGS[@]}" >&2
+echo "File pattern: $PATTERN" >&2
+
+# For each package, check if its branch has matching file changes since $CUTOFF
+SINCE_DATE=$(date -d "-${DAYS} days" --iso-8601=seconds)
+
+for pkg in "${PKGS[@]}"; do
+  # Check if the remote branch exists
+  if ! git -C "$REPO_ROOT" rev-parse --verify "origin/$pkg" &>/dev/null; then
+    echo "error: no remote branch for package '$pkg'" >&2
+    exit 1
+  fi
+
+  # Check if there are any commits matching $PATTERN for this package since $CUTOFF
+  if git -C "$REPO_ROOT" log "origin/$pkg" --since="$SINCE_DATE" --name-only --format="" -- "$PATTERN" | grep -q .; then
+    echo "$pkg"
+
+    if (( SHOW_DIFF )); then
+      # Find the boundary commits for the range touching $PATTERN
+      mapfile -t commits < <(
+        git -C "$REPO_ROOT" log "origin/$pkg" --since="$SINCE_DATE" --format="%H" -- "$PATTERN"
+      )
+      newest="${commits[0]}"
+      oldest="${commits[-1]}"
+      # Diff from the parent of the oldest in-range commit (empty tree if root)
+      if git -C "$REPO_ROOT" rev-parse "${oldest}^" &>/dev/null; then
+        base="${oldest}^"
+      else
+        # So far this always outputs the magic value
+        # '4b825dc642cb6eb9a060e54bf8d69288fbee4904', but instead of hardcoding
+        # it we regenerate it each time to not rely on it
+        #
+        # https://stackoverflow.com/a/9766506
+        base="$(git mktree < /dev/null)"
+      fi
+      git -C "$REPO_ROOT" diff "$base" "$newest" -- "$PATTERN"
+    fi
+  fi
+done
