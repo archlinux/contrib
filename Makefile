@@ -5,6 +5,7 @@ BINDIR = $(PREFIX)/bin
 BASH_SCRIPTS = \
 	admin/checkservices \
 	aur/review \
+	aur/show-aur-changes \
 	package/greposcope \
 	package/packages-signed-by \
 	package/parse-submodules \
