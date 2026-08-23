@@ -240,40 +240,37 @@ fi
 for pkg in "${packages[@]}"; do
     pushd "$pkg" &>/dev/null
 
-    # This should help us figure out if the package is already built
-    readarray -t pkgs < <(makepkg --packagelist)
-    if [[ -f ${pkgs[0]} ]]; then
-        echo "${pkg[0]} has already been rebuilt!"
-    else
-        if ((EDIT_PKGBUILD)); then
-            "$EDITOR" PKGBUILD
-        fi
-        if ! ((NO_BUILD)); then
-            SKIP_BUILD=0
-            while true; do
-                if pkgctl build --rebuild $REPO $OFFLOAD $NOCHECK; then
-                    rebuilt_packages+=("$pkg")
-                    break
-                else
-                    skipped_packages+=("$pkg")
-                fi
-                if ((SKIP_BROKEN)); then
-                    SKIP_BUILD=1
-                    break
-                fi
-                echo "We failed to build! You are in a subshell to fix the build. Exit the shell to build again."
-                $SHELL || true
-                read -p "Skip build? [N/y] " -n 1 -r
-                if [[ $REPLY =~ ^[Yy]$ ]]; then
-                    SKIP_BUILD=1
-                    break
-                fi
-            done
-            if ((SKIP_BUILD)); then
-                popd &>/dev/null
-                continue
+    if ((EDIT_PKGBUILD)); then
+        "$EDITOR" PKGBUILD
+    fi
+
+    if ! ((NO_BUILD)); then
+        SKIP_BUILD=0
+        while true; do
+            if pkgctl build --rebuild $REPO $OFFLOAD $NOCHECK; then
+                rebuilt_packages+=("$pkg")
+                break
+            else
+                skipped_packages+=("$pkg")
             fi
+            if ((SKIP_BROKEN)); then
+                SKIP_BUILD=1
+                break
+            fi
+            echo "We failed to build! You are in a subshell to fix the build. Exit the shell to build again."
+            $SHELL || true
+            read -p "Skip build? [N/y] " -n 1 -r
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                SKIP_BUILD=1
+                break
+            fi
+        done
+
+        if ((SKIP_BUILD)); then
+            popd &>/dev/null
+            continue
         fi
+
         if ! ((NO_PUBLISH)); then
             if pkgctl release --db-update $REPO -m "$message"; then
                 remove_from_rebuilt_packages_list "$pkg"
