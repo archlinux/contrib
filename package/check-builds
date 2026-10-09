@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# SPDX-License-Identifier: GPL-2.0
+# Check running package builds on the build server
+
+set -eou pipefail
+
+HOST="build.archlinux.org"
+
+ssh "${HOST}" ps -eo user:30=,args= \
+	| awk 'match($0,/pkgctl offload.*offload\/([^.\/]+)/,m){print $1, m[1]}' \
+	| sort -u \
+	| awk '{u[$1]=u[$1]"  ├── "$2"\n"} END{for(i in u) printf "%s\n%s\n",i,u[i]}'

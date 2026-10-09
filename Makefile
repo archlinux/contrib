@@ -6,6 +6,7 @@ BASH_SCRIPTS = \
 	admin/checkservices \
 	aur/review \
 	aur/show-aur-changes \
+	package/check-builds \
 	package/greposcope \
 	package/packages-signed-by \
 	package/parse-submodules \
