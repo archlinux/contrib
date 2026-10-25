@@ -9,10 +9,15 @@
 set -eou pipefail
 
 progname="greposcope"
-tmp_dir="${TMPDIR:-/tmp}/${progname}-${UID}"
 rebuilderd_host="https://reproducible.archlinux.org"
 extra_grep_opt=""
 pattern=""
+
+tmp_dir="$(cat "${XDG_RUNTIME_DIR}/${progname}.tmpdir" 2>/dev/null)" || true
+if [[ ! -d "${tmp_dir}" ]]; then
+	tmp_dir="$(mktemp -d -p "${TMPDIR:-/tmp}" "${progname}.XXXXXXXXXX")"
+	echo "${tmp_dir}" > "${XDG_RUNTIME_DIR}/${progname}.tmpdir"
+fi
 
 help() {
 	cat <<EOF
@@ -88,7 +93,7 @@ pkg_list=("${updated_pkg_list[@]}")
 if ! (( ${#pkg_list[@]} )); then
 	echo "==> All diffoscope outputs are already downloaded"
 else
-	echo -e "==> Downloading diffoscope outputs of ${#pkg_list[@]} unreproducible packages...\nThis may take some time...\n"
+	echo -e "==> Downloading diffoscope outputs of ${#pkg_list[@]} unreproducible packages in the \"${tmp_dir}\" directory...\nThis may take some time...\n"
 	parallel --bar -j "$(nproc)" \
 		rebuildctl -H "${rebuilderd_host}" pkgs diffoscope --name {} "&>" "${tmp_dir}/{}.diffoscope" ::: "${pkg_list[@]}" || true
 fi
