@@ -13,7 +13,7 @@ package.
 
 - One ACK for each Pull-Request is needed
 
-- Please add [SPDX license header](https://spdx.org/ids-how)
+- Please add [SPDX license header](https://spdx.org/licenses/)
 
 ### Release process
 
