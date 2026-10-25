@@ -17,4 +17,4 @@ package.
 
 ### Release process
 
-Run `make release` to push a signed git tag and create a release with default changelog (requires `gh`).
+Run `make release` to push a signed git tag and create a release with default changelog (requires `github-cli`).
