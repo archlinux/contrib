@@ -23,8 +23,8 @@ help() {
 	cat <<EOF
 Usage: ${progname} [OPTIONS] pattern
 
-Download and search for 'pattern' in diffoscope outputs of every unreproducible packages reported at ${rebuilderd_host}.
-This is useful to identify packages that are unreproducible because of a specific issue.
+Download and search for 'pattern' in diffoscope outputs of every unreproducible package reported at ${rebuilderd_host}.
+This is useful for uncovering packages that are unreproducible due to a specific issue.
 
 OPTIONS
     -h, --help                  Show this message
